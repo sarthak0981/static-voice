@@ -271,6 +271,11 @@ io.on('connection', (socket) => {
       reason: 'You were removed from the room.'
     });
 
+    socket.to(room.roomId).emit('participant-left-party', {
+      participantId: result.kickedParticipant.participantId,
+      displayName: result.kickedParticipant.displayName
+    });
+
     callback({ success: true });
     broadcastRoomState(room.roomId);
   });
@@ -290,7 +295,10 @@ io.on('connection', (socket) => {
       reason: 'The host removed you from the Party.'
     });
 
-    socket.to(room.roomId).emit('participant-left-party', result.removedParticipant.participantId);
+    socket.to(room.roomId).emit('participant-left-party', {
+      participantId: result.removedParticipant.participantId,
+      displayName: result.removedParticipant.displayName
+    });
 
     callback({ success: true });
     broadcastRoomState(room.roomId);
@@ -338,7 +346,10 @@ io.on('connection', (socket) => {
         socket.leave(room.roomId);
 
         if (result.leavingParticipant) {
-          socket.to(room.roomId).emit('participant-left-party', result.leavingParticipant.participantId);
+          socket.to(room.roomId).emit('participant-left-party', {
+            participantId: result.leavingParticipant.participantId,
+            displayName: result.leavingParticipant.displayName
+          });
         }
 
         if (result.newHost) {
@@ -458,7 +469,10 @@ io.on('connection', (socket) => {
         broadcastRoomState(result.room.roomId);
       } else {
         if (result.participant) {
-          socket.to(result.room.roomId).emit('participant-left-party', result.participant.participantId);
+          socket.to(result.room.roomId).emit('participant-left-party', {
+            participantId: result.participant.participantId,
+            displayName: result.participant.displayName
+          });
         }
         if (result.newHost) {
           io.to(result.room.roomId).emit('host-changed', {

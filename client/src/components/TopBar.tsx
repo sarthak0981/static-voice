@@ -84,8 +84,11 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      {/* Right: Clean minimal room settings */}
+      {/* Right: Clean minimal room settings & Live Version Badge */}
       <div className="flex items-center gap-2 shrink-0 py-2">
+        <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono text-[#8A99AD] select-none">
+          v1.2.0
+        </span>
         {isHost && (
           <button
             type="button"

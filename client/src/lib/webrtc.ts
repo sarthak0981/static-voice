@@ -64,6 +64,52 @@ export class WebRTCVoiceEngine {
   private callbacks: WebRTCVoiceEngineCallbacks;
   private globalUnlockListenerBound: boolean = false;
 
+  // Volume control per peer and master
+  private peerVolumes: Map<string, number> = new Map();
+  private masterVolume: number = 1.0;
+
+  /**
+   * Sets individual playback volume for a specific participant (0.0 to 1.0)
+   */
+  public setPeerVolume(id: string, volume: number): void {
+    const clamped = Math.max(0, Math.min(1, volume));
+    this.peerVolumes.set(id, clamped);
+
+    let peer = this.peersBySocketId.get(id);
+    if (!peer) {
+      peer = this.peersByParticipantId.get(id);
+    }
+    if (peer && peer.audioElement) {
+      peer.audioElement.volume = clamped * this.masterVolume;
+    }
+  }
+
+  /**
+   * Gets individual playback volume for a specific participant (0.0 to 1.0, default 1.0)
+   */
+  public getPeerVolume(id: string): number {
+    return this.peerVolumes.get(id) ?? 1.0;
+  }
+
+  /**
+   * Sets master output volume scaling across all remote participants (0.0 to 1.0)
+   */
+  public setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    for (const [socketId, peer] of this.peersBySocketId.entries()) {
+      const pId = peer.remoteParticipantId;
+      const userVol = (pId ? this.peerVolumes.get(pId) : undefined) ?? (this.peerVolumes.get(socketId) ?? 1.0);
+      peer.audioElement.volume = userVol * this.masterVolume;
+    }
+  }
+
+  /**
+   * Gets master output volume
+   */
+  public getMasterVolume(): number {
+    return this.masterVolume;
+  }
+
   constructor(callbacks: WebRTCVoiceEngineCallbacks) {
     this.callbacks = callbacks;
     this.setupSocketListeners();
@@ -373,8 +419,8 @@ export class WebRTCVoiceEngine {
     (audio as any).playsInline = true;
     audio.setAttribute('playsinline', 'true');
     audio.setAttribute('webkit-playsinline', 'true');
-    audio.preload = 'auto';
-    audio.volume = 1.0;
+    const userVol = (remoteParticipantId ? this.peerVolumes.get(remoteParticipantId) : undefined) ?? (this.peerVolumes.get(remoteSocketId) ?? 1.0);
+    audio.volume = userVol * this.masterVolume;
     audio.muted = false;
 
     if (typeof (audio as any).setSinkId === 'function') {
@@ -734,8 +780,11 @@ export class WebRTCVoiceEngine {
     });
 
     // Peer left party
-    socket.on('participant-left-party', (participantId: string) => {
-      this.removePeer(participantId);
+    socket.on('participant-left-party', (payload: any) => {
+      const pId = typeof payload === 'string' ? payload : payload?.participantId;
+      if (pId) {
+        this.removePeer(pId);
+      }
     });
   }
 

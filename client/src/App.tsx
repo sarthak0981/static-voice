@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
-import { Volume2 } from 'lucide-react';
 import {
   ClientRoomState,
   ConnectionStatus,
@@ -22,6 +21,8 @@ import { PartyGrid } from './components/PartyGrid.js';
 import { LoungeDrawer } from './components/LoungeDrawer.js';
 import { ZenLoungeView } from './components/ZenLoungeView.js';
 import { ControlBar } from './components/ControlBar.js';
+import { NotificationCapsule, NotificationItem } from './components/NotificationCapsule.js';
+import { HostActionSheet } from './components/HostActionSheet.js';
 import {
   EndRoomModal,
   ShareModal,
@@ -56,8 +57,6 @@ export function App() {
 
   // Microphone & Audio
   const [microphoneState, setMicrophoneState] = useState<MicrophoneState>('OFF');
-  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState<boolean>(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [hostGraceSeconds, setHostGraceSeconds] = useState<number | undefined>(undefined);
   const graceIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -89,9 +88,47 @@ export function App() {
     roomStateRef.current = roomState;
   }, [roomState]);
 
-  const showToast = useCallback((msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
+  // Unified FIFO Notification Queue
+  const [notificationQueue, setNotificationQueue] = useState<NotificationItem[]>([]);
+
+  const queueNotification = useCallback((item: Omit<NotificationItem, 'id'>) => {
+    const id = 'notif_' + Math.random().toString(36).substring(2, 9);
+    setNotificationQueue((prev) => [...prev, { ...item, id }]);
+  }, []);
+
+  const handleDismissNotification = useCallback(() => {
+    setNotificationQueue((prev) => prev.slice(1));
+  }, []);
+
+  const showToast = useCallback((msg: string, icon?: NotificationItem['icon']) => {
+    queueNotification({
+      message: msg,
+      icon: icon || 'info',
+      type: 'info'
+    });
+  }, [queueNotification]);
+
+  // Per-Participant Volume Control (0 to 100)
+  const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
+  const [selectedParticipantForAction, setSelectedParticipantForAction] = useState<Participant | null>(null);
+
+  const handleVolumeChange = useCallback((participantId: string, volume: number) => {
+    setPeerVolumes((prev) => ({ ...prev, [participantId]: volume }));
+    webrtcEngineRef.current?.setPeerVolume(participantId, volume / 100);
+  }, []);
+
+  const handleShiftParticipant = useCallback((participantId: string, direction: -1 | 1) => {
+    if (!roomStateRef.current) return;
+    const party = [...roomStateRef.current.party];
+    const idx = party.findIndex((p) => p.participantId === participantId);
+    if (idx === -1) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= party.length) return;
+    const [moved] = party.splice(idx, 1);
+    party.splice(newIdx, 0, moved);
+
+    const socket = getSocket();
+    socket.emit('reorder-party', { orderedParticipantIds: party.map((p) => p.participantId) });
   }, []);
 
   const handleToggleLounge = useCallback(() => {
@@ -126,7 +163,19 @@ export function App() {
     const engine = new WebRTCVoiceEngine({
       onMicrophoneStateChange: (state) => setMicrophoneState(state),
       onSpeakingChange: (_isSpeaking) => {},
-      onAutoplayBlocked: (blocked) => setIsAutoplayBlocked(blocked),
+      onAutoplayBlocked: (blocked) => {
+        if (blocked) {
+          queueNotification({
+            message: 'Audio paused by browser',
+            icon: 'volume',
+            type: 'action',
+            actionText: 'TAP TO UNMUTE',
+            onAction: () => {
+              webrtcEngineRef.current?.unlockAudio();
+            }
+          });
+        }
+      },
       onError: (msg) => showToast(msg)
     });
 
@@ -136,7 +185,7 @@ export function App() {
       engine.teardown();
       webrtcEngineRef.current = null;
     };
-  }, [showToast]);
+  }, [showToast, queueNotification]);
 
   // Setup Socket.io event listeners
   useEffect(() => {
@@ -304,6 +353,27 @@ export function App() {
       showToast(payload.open ? 'Invitations opened.' : 'The invitations are closed 😊');
     };
 
+    const handleParticipantLeftParty = (payload: { participantId: string; displayName?: string } | string) => {
+      let displayName: string | undefined;
+      let participantId: string;
+      if (typeof payload === 'string') {
+        participantId = payload;
+        const p = roomStateRef.current?.party.find((item) => item.participantId === participantId) ||
+                  roomStateRef.current?.lounge.find((item) => item.participantId === participantId);
+        displayName = p?.displayName;
+      } else {
+        participantId = payload.participantId;
+        displayName = payload.displayName;
+      }
+
+      const name = displayName || 'Someone';
+      queueNotification({
+        message: `${name} has left the party`,
+        icon: 'leave',
+        type: 'leave'
+      });
+    };
+
     socket.on('room-state-updated', handleRoomStateUpdated);
     socket.on('participant-admitted', handleParticipantAdmitted);
     socket.on('force-muted', handleForceMuted);
@@ -316,6 +386,7 @@ export function App() {
     socket.on('host-reconnected', handleHostReconnected);
     socket.on('party-chat-message', handlePartyChatMessage);
     socket.on('invitations-updated', handleInvitationsUpdated);
+    socket.on('participant-left-party', handleParticipantLeftParty);
 
     return () => {
       socket.off('room-state-updated', handleRoomStateUpdated);
@@ -330,6 +401,7 @@ export function App() {
       socket.off('host-reconnected', handleHostReconnected);
       socket.off('party-chat-message', handlePartyChatMessage);
       socket.off('invitations-updated', handleInvitationsUpdated);
+      socket.off('participant-left-party', handleParticipantLeftParty);
       if (graceIntervalRef.current) clearInterval(graceIntervalRef.current);
     };
   }, [screenState, showToast, isChatOpen, roomState?.currentUser.participantId]);
@@ -651,6 +723,10 @@ export function App() {
   if (currentUser.state === 'LOUNGE') {
     return (
       <div className="ui-fade-transition w-full h-full">
+        <NotificationCapsule
+          queue={notificationQueue}
+          onDismissCurrent={handleDismissNotification}
+        />
         <ZenLoungeView
           displayName={currentUser.displayName}
           partyName={roomState.room.roomName || `Room ${roomState.room.roomId}`}
@@ -667,12 +743,11 @@ export function App() {
 
   return (
     <div className="ui-fade-transition flex flex-col h-[100dvh] min-h-[100dvh] w-screen overflow-hidden bg-background bg-static-noise text-static-text font-sans">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-surface-elevated border border-surface-border text-white text-xs font-mono shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150 max-w-[calc(100vw-2rem)] truncate">
-          {toastMessage}
-        </div>
-      )}
+      {/* Unified FIFO Top Notification Capsule */}
+      <NotificationCapsule
+        queue={notificationQueue}
+        onDismissCurrent={handleDismissNotification}
+      />
 
       {/* Top Bar Notification Strip (Code removed, reserved for alerts/status) */}
       <TopBar
@@ -692,21 +767,6 @@ export function App() {
         />
       )}
 
-      {/* iOS Safari / Browser Autoplay Blocked Alert Pill */}
-      {isAutoplayBlocked && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 animate-bounce">
-          <button
-            onClick={() => {
-              webrtcEngineRef.current?.unlockAudio();
-            }}
-            className="px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-400 text-black font-semibold text-xs flex items-center gap-2 shadow-xl shadow-amber-500/25 active:scale-95 transition-all cursor-pointer"
-          >
-            <Volume2 className="w-4 h-4" />
-            <span>Audio paused by browser • Tap to hear party</span>
-          </button>
-        </div>
-      )}
-
       {/* Main Split: Party Grid (Full/Center) + Lounge Drawer (Host Only, Collapsible) */}
       <main className="flex-1 flex overflow-hidden">
         <PartyGrid
@@ -723,6 +783,8 @@ export function App() {
           isLoungeCollapsed={!isLoungeVisible}
           onToggleLoungeCollapse={handleToggleLounge}
           loungeCount={roomState.lounge.length}
+          peerVolumes={peerVolumes}
+          onSelectParticipantForAction={setSelectedParticipantForAction}
         />
 
         {isHost && (
@@ -812,6 +874,32 @@ export function App() {
         isOpen={isHostPromotedModalOpen}
         onClose={() => setIsHostPromotedModalOpen(false)}
       />
+
+      {/* Mobile / Touch Host Action Sheet */}
+      {selectedParticipantForAction && (
+        <HostActionSheet
+          isOpen={!!selectedParticipantForAction}
+          onClose={() => setSelectedParticipantForAction(null)}
+          participant={selectedParticipantForAction}
+          volume={peerVolumes[selectedParticipantForAction.participantId] ?? 100}
+          onVolumeChange={handleVolumeChange}
+          onMuteParticipant={handleMuteParticipant}
+          onTransferHost={handleTransferHost}
+          onRemoveFromParty={handleRemoveFromParty}
+          onKickParticipant={handleKickParticipant}
+          onShiftLeft={(pid) => handleShiftParticipant(pid, -1)}
+          onShiftRight={(pid) => handleShiftParticipant(pid, 1)}
+          canShiftLeft={
+            (roomState.party.findIndex((p) => p.participantId === selectedParticipantForAction.participantId)) > 0
+          }
+          canShiftRight={
+            (() => {
+              const idx = roomState.party.findIndex((p) => p.participantId === selectedParticipantForAction.participantId);
+              return idx >= 0 && idx < roomState.party.length - 1;
+            })()
+          }
+        />
+      )}
 
       <EndRoomModal
         isOpen={isEndRoomModalOpen}
