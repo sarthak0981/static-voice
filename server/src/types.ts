@@ -133,7 +133,7 @@ export interface ClientToServerEvents {
   ) => void;
 
   'signal-peer': (
-    payload: { targetSocketId: string; signal: any; type: 'offer' | 'answer' | 'ice-candidate' }
+    payload: { targetSocketId: string; targetParticipantId?: string; signal: any; type: 'offer' | 'answer' | 'ice-candidate' }
   ) => void;
 
   'send-party-chat': (

@@ -180,6 +180,7 @@ export function App() {
 
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.startMicrophone();
+        webrtcEngineRef.current.unlockAudio();
       }
     };
 
@@ -375,8 +376,9 @@ export function App() {
           setScreenState('QUEUE');
         } else {
           setScreenState('ROOM');
-          if (res.state.currentUser.state === 'PARTY' && webrtcEngineRef.current) {
-            await webrtcEngineRef.current.startMicrophone();
+          if (webrtcEngineRef.current) {
+            webrtcEngineRef.current.unlockAudio();
+            webrtcEngineRef.current.startMicrophone();
           }
         }
       } else {
@@ -653,6 +655,8 @@ export function App() {
           displayName={currentUser.displayName}
           partyName={roomState.room.roomName || `Room ${roomState.room.roomId}`}
           roomCode={roomState.room.roomId}
+          microphoneState={microphoneState}
+          onEnableMic={handleToggleMicrophone}
           onLeaveRoom={handleLeaveClick}
         />
       </div>

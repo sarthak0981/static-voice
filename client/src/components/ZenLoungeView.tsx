@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Clock, Shield } from 'lucide-react';
+import { LogOut, Clock, Shield, Mic, Check } from 'lucide-react';
+
+import { MicrophoneState } from '../types/index.js';
 
 interface ZenLoungeViewProps {
   displayName: string;
   partyName: string;
   roomCode: string;
+  microphoneState?: MicrophoneState;
+  onEnableMic?: () => void;
   onLeaveRoom: () => void;
 }
 
@@ -12,6 +16,8 @@ export const ZenLoungeView: React.FC<ZenLoungeViewProps> = ({
   displayName,
   partyName,
   roomCode: _roomCode,
+  microphoneState = 'OFF',
+  onEnableMic,
   onLeaveRoom,
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -85,9 +91,27 @@ export const ZenLoungeView: React.FC<ZenLoungeViewProps> = ({
         </div>
 
         {/* User identification badge */}
-        <div className="mt-5 sm:mt-6 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#12141C] border border-white/10 text-xs font-mono text-[#8A99AD]">
-          <span>Joined as</span>
-          <span className="text-[#00E599] font-medium truncate max-w-[150px]">{displayName}</span>
+        <div className="mt-5 sm:mt-6 flex flex-col sm:flex-row items-center gap-2.5">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#12141C] border border-white/10 text-xs font-mono text-[#8A99AD]">
+            <span>Joined as</span>
+            <span className="text-[#00E599] font-medium truncate max-w-[150px]">{displayName}</span>
+          </div>
+
+          {microphoneState === 'ON' ? (
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#00E599]/10 border border-[#00E599]/30 text-xs font-mono text-[#00E599]">
+              <Check className="w-3.5 h-3.5 text-[#00E599]" />
+              <span>Mic Ready</span>
+            </div>
+          ) : (
+            <button
+              onClick={onEnableMic}
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#00E599]/15 hover:bg-[#00E599]/25 border border-[#00E599]/40 text-xs font-mono text-[#00E599] transition-all duration-200 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(0,229,153,0.1)]"
+            >
+              <Mic className="w-3.5 h-3.5" />
+              <span>Enable & Test Mic</span>
+            </button>
+          )}
         </div>
       </main>
 

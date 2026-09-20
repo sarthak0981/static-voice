@@ -149,6 +149,19 @@ io.on('connection', (socket) => {
       const clientState = roomManager.getClientRoomState(result.room, result.participant);
       callback({ success: true, state: clientState });
       broadcastRoomState(result.room.roomId);
+
+      // If reconnected user is in the party, notify peers to establish WebRTC connections
+      if (result.participant.state === 'PARTY') {
+        const party = roomManager.getPartyParticipants(result.room);
+        for (const member of party) {
+          if (member.participantId !== result.participant.participantId) {
+            io.to(member.socketId).emit('peer-ready-for-offer', {
+              socketId: result.participant.socketId,
+              participantId: result.participant.participantId
+            });
+          }
+        }
+      }
     } catch (err: any) {
       callback({ success: false, error: err.message || 'Failed to restore session.' });
     }

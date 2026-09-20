@@ -159,6 +159,13 @@ describe('STATIC Full Integration: Chat Sync, Clear Lounge, Stop Invitations & H
         }
         if (callback) callback({ success: true });
       });
+
+      socket.on('signal-peer', (payload) => {
+        if (!currentRoomId) return;
+        const room = roomManager.getRoom(currentRoomId);
+        if (!room) return;
+        signaling.handleSignal(socket, room, payload);
+      });
     });
 
     await new Promise<void>((resolve) => {
@@ -230,6 +237,23 @@ describe('STATIC Full Integration: Chat Sync, Clear Lounge, Stop Invitations & H
     const receivedChat = await hostChatPromise;
     expect(receivedChat.text).toBe('Hey host! Can you see this sync?');
     expect(receivedChat.senderName).toBe('PartyBeta');
+
+    // 4b. Test WebRTC Peer Signaling: Host sends offer to GuestParty, GuestParty receives it
+    const guestSignalPromise = new Promise<any>((resolve) => {
+      guestPartySocket.on('signal-received', resolve);
+    });
+
+    hostSocket.emit('signal-peer', {
+      targetSocketId: guestPartySocket.id!,
+      targetParticipantId: guestPartyId,
+      signal: { type: 'offer', sdp: 'v=0\r\no=- 12345 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n' },
+      type: 'offer'
+    });
+
+    const receivedSignal = await guestSignalPromise;
+    expect(receivedSignal.type).toBe('offer');
+    expect(receivedSignal.signal.type).toBe('offer');
+    expect(receivedSignal.senderParticipantId).toMatch(/^p_[a-f0-9]+$/);
 
     // 5. Test Host Clear Lounge
     const loungeClearedPromise = new Promise<any>((resolve) => {
