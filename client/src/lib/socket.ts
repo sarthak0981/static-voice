@@ -5,9 +5,10 @@ let socketInstance: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socketInstance) {
-    // Connect to current origin, with fallback to port 3001 in dev if on 5173
+    // Connect to custom backend URL if specified, or current origin, with fallback to port 3001 in dev
+    const envUrl = (import.meta as any).env?.VITE_SERVER_URL;
     const isDev = window.location.port === '5173';
-    const serverUrl = isDev ? 'http://localhost:3001' : window.location.origin;
+    const serverUrl = envUrl || (isDev ? 'http://localhost:3001' : window.location.origin);
 
     socketInstance = io(serverUrl, {
       transports: ['websocket', 'polling'],
