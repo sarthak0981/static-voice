@@ -361,7 +361,7 @@ export function App() {
           queueNotification({
             message: `${payload.displayName || 'Someone'} raised their hand ✋`,
             type: 'action',
-            icon: 'join',
+            icon: 'hand',
             durationMs: 4000
           });
         }

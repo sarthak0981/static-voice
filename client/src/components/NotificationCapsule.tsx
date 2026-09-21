@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Sparkles, LogOut, Info, AlertTriangle, Check, Crown, Lock, Unlock } from 'lucide-react';
+import { Volume2, Sparkles, LogOut, Info, AlertTriangle, Check, Crown, Lock, Unlock, Hand } from 'lucide-react';
 
 export interface NotificationItem {
   id: string;
   message: string;
   type?: 'info' | 'leave' | 'join' | 'alert' | 'success' | 'action' | 'host' | 'invitations-open' | 'invitations-closed';
-  icon?: 'leave' | 'join' | 'volume' | 'alert' | 'success' | 'info' | 'host' | 'unlock' | 'lock';
+  icon?: 'leave' | 'join' | 'volume' | 'alert' | 'success' | 'info' | 'host' | 'unlock' | 'lock' | 'hand';
   actionText?: string;
   onAction?: () => void;
   durationMs?: number;
@@ -87,6 +87,8 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
         return <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
       case 'success':
         return <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+      case 'hand':
+        return <Hand className="w-3.5 h-3.5 text-amber-300 fill-amber-400/20 shrink-0" />;
       default:
         return <Info className="w-3.5 h-3.5 text-[#8A99AD] shrink-0" />;
     }

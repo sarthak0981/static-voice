@@ -214,11 +214,11 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             title={isHandRaised ? 'Lower Hand (Hand is Raised)' : 'Raise Hand'}
             className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 ${
               isHandRaised
-                ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-[0_0_16px_rgba(251,191,36,0.45)] animate-pulse'
+                ? 'bg-amber-500/15 border-amber-400/50 text-amber-300 font-semibold shadow-[0_0_14px_rgba(251,191,36,0.25)]'
                 : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
             }`}
           >
-            <Hand className={`w-4 h-4 sm:w-3.5 sm:h-3.5 transition-transform duration-300 ${isHandRaised ? 'rotate-12 scale-110' : ''}`} />
+            <Hand className={`w-4 h-4 sm:w-3.5 sm:h-3.5 transition-transform duration-300 ${isHandRaised ? 'rotate-12 scale-110 text-amber-300 fill-amber-400/20' : 'text-white/80'}`} />
             <span className="hidden md:inline text-xs font-mono">{isHandRaised ? 'HAND UP' : 'HAND'}</span>
           </button>
         )}

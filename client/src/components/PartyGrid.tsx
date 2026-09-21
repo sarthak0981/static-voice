@@ -9,8 +9,7 @@ import {
   PanelRightOpen,
   UserX,
   WifiOff,
-  Lock,
-  Unlock
+  Lock
 } from 'lucide-react';
 import { Participant } from '../types/index.js';
 import { ConnectionQuality } from '../lib/webrtcDiagnostics.js';
@@ -227,11 +226,11 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                       : ''
                   }`}
                 >
-                {/* Floating Animated Raised Hand Badge */}
+                {/* Floating Animated Raised Hand Badge: Translucent Low-Opacity Glass with Subtle Amber Glow */}
                 {isHandRaised && (
-                  <div className="absolute -top-2.5 -right-1.5 flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-400 text-black text-[10px] font-mono font-bold shadow-[0_0_18px_rgba(251,191,36,0.6)] animate-bounce z-20">
-                    <span className="text-xs">✋</span>
-                    <span className="hidden sm:inline">HAND UP</span>
+                  <div className="absolute -top-2.5 -right-1.5 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-neutral-950/85 backdrop-blur-md border border-amber-400/50 text-amber-200 text-[10px] font-mono font-bold shadow-[0_0_14px_rgba(251,191,36,0.25)] animate-bounce z-20">
+                    <span className="text-xs leading-none select-none">✋</span>
+                    <span className="tracking-wider">HAND UP</span>
                   </div>
                 )}
 
@@ -263,7 +262,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                       </span>
                     )}
 
-                    {!isLocal && !isDisconnected && isAudioMutedLocally && (
+                    {!isLocal && !isHost && !isDisconnected && isAudioMutedLocally && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-[9px] font-mono text-rose-300">
                         <VolumeX className="w-2.5 h-2.5" />
                         <span>MUTED FOR YOU</span>
@@ -359,72 +358,71 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                     )}
                   </div>
 
-                  {/* Direct Action Buttons on Card: Mute/Unmute, Host Lock Mute, Make Host, Kick */}
+                  {/* Direct Action Buttons on Card */}
                   {!isLocal && !isDisconnected && (
                     <div className="flex items-center gap-1">
-                      {/* 1. Direct Local Audio Mute/Unmute (Host is Protected) */}
-                      {isParticipantHost && !isHost ? (
-                        <div
-                          title="Host cannot be muted"
-                          className="p-1.5 rounded-lg border border-white/5 bg-white/[0.02] text-neutral-600 cursor-not-allowed opacity-40 select-none"
-                        >
-                          <Volume2 className="w-3.5 h-3.5" />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (onToggleLocalMute) {
-                              onToggleLocalMute(participant.participantId);
-                            } else {
-                              const nextVol = isAudioMutedLocally ? 100 : 0;
-                              onVolumeChange(participant.participantId, nextVol);
-                            }
-                          }}
-                          title={isAudioMutedLocally ? 'Unmute Audio for You' : 'Mute Audio for You'}
-                          aria-label={isAudioMutedLocally ? 'Unmute Audio for You' : 'Mute Audio for You'}
-                          className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-90 ${
-                            isAudioMutedLocally
-                              ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
-                              : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
-                          }`}
-                        >
-                          {isAudioMutedLocally ? (
-                            <VolumeX className="w-3.5 h-3.5" />
-                          ) : (
-                            <Volume2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      )}
-
-                      {/* 2. Host Action: Lock-Mute / Unmute Participant */}
-                      {isHost && !isParticipantHost && (
-                        isHostMuted ? (
+                      {/* Host: Single Normal Mute/Unmute Button (Locked so participants cannot unmute themselves) */}
+                      {isHost ? (
+                        !isParticipantHost && (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onUnmuteParticipant?.(participant.participantId);
+                              if (isHostMuted) {
+                                onUnmuteParticipant?.(participant.participantId);
+                              } else {
+                                onMuteParticipant?.(participant.participantId);
+                              }
                             }}
-                            title="Unmute Participant (Locked by Host)"
-                            aria-label="Unmute Participant"
-                            className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 transition-all cursor-pointer active:scale-90"
+                            title={isHostMuted ? 'Unmute participant' : 'Mute participant'}
+                            aria-label={isHostMuted ? 'Unmute participant' : 'Mute participant'}
+                            className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-90 ${
+                              isHostMuted
+                                ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
+                                : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
+                            }`}
                           >
-                            <Unlock className="w-3.5 h-3.5" />
+                            {isHostMuted ? (
+                              <MicOff className="w-3.5 h-3.5" />
+                            ) : (
+                              <Mic className="w-3.5 h-3.5" />
+                            )}
                           </button>
+                        )
+                      ) : (
+                        /* Non-Host: Single Local Mute Button (Host Protected) */
+                        isParticipantHost ? (
+                          <div
+                            title="Host cannot be muted"
+                            className="p-1.5 rounded-lg border border-white/5 bg-white/[0.02] text-neutral-600 cursor-not-allowed opacity-40 select-none"
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                          </div>
                         ) : (
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              onMuteParticipant?.(participant.participantId);
+                              if (onToggleLocalMute) {
+                                onToggleLocalMute(participant.participantId);
+                              } else {
+                                const nextVol = isAudioMutedLocally ? 100 : 0;
+                                onVolumeChange(participant.participantId, nextVol);
+                              }
                             }}
-                            title="Mute Participant (Locked by Host)"
-                            aria-label="Mute Participant"
-                            className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 text-neutral-400 hover:text-rose-300 transition-all cursor-pointer active:scale-90"
+                            title={isAudioMutedLocally ? 'Unmute Audio for You' : 'Mute Audio for You'}
+                            aria-label={isAudioMutedLocally ? 'Unmute Audio for You' : 'Mute Audio for You'}
+                            className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-90 ${
+                              isAudioMutedLocally
+                                ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
+                                : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
+                            }`}
                           >
-                            <MicOff className="w-3.5 h-3.5" />
+                            {isAudioMutedLocally ? (
+                              <VolumeX className="w-3.5 h-3.5" />
+                            ) : (
+                              <Volume2 className="w-3.5 h-3.5" />
+                            )}
                           </button>
                         )
                       )}
