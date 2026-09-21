@@ -42,31 +42,35 @@ export const PartyChat: React.FC<PartyChatProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 sm:bottom-20 sm:right-6 sm:inset-x-auto w-full sm:w-80 md:w-96 h-[72dvh] sm:h-96 rounded-t-3xl sm:rounded-2xl bg-surface/95 border-t sm:border border-surface-border shadow-2xl backdrop-blur-xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-4 duration-200 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-      {/* Mobile top pull handle indicator */}
-      <div className="w-12 h-1 rounded-full bg-white/20 mx-auto my-2 sm:hidden shrink-0" />
+    <>
+      {/* Mobile Backdrop to tap outside and dismiss */}
+      <div
+        className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 sm:hidden animate-in fade-in duration-200"
+        onClick={onClose}
+      />
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 sm:py-3 border-b border-surface-border bg-surface-card/60 shrink-0">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-static-accent" />
-          <span className="text-xs font-mono font-bold tracking-wider text-white">
-            PARTY CHAT
-          </span>
-          <span className="text-[10px] font-mono text-static-muted">
-            (Party Only)
-          </span>
+      <div className="fixed inset-x-0 bottom-0 sm:bottom-20 sm:right-6 sm:inset-x-auto w-full sm:w-80 md:w-96 h-[72dvh] sm:h-96 rounded-t-3xl sm:rounded-2xl bg-surface/98 border-t sm:border border-surface-border shadow-2xl backdrop-blur-xl flex flex-col z-50 overflow-hidden animate-in slide-in-from-bottom-6 duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border bg-surface-card/60 shrink-0">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-static-accent" />
+            <span className="text-xs font-mono font-bold tracking-wider text-white">
+              PARTY CHAT
+            </span>
+            <span className="text-[10px] font-mono text-static-muted">
+              (Party Only)
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Chat"
+            className="p-1.5 -mr-1 rounded-xl text-static-muted hover:text-white hover:bg-white/10 active:scale-90 transition-all cursor-pointer flex items-center justify-center"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
-
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close Chat"
-          className="p-1 rounded-lg text-static-muted hover:text-white transition-colors cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
 
       {/* Messages Feed */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -139,6 +143,7 @@ export const PartyChat: React.FC<PartyChatProps> = ({
           <Send className="w-4 h-4" />
         </button>
       </form>
-    </div>
+      </div>
+    </>
   );
 };

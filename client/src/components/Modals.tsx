@@ -67,8 +67,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
     try {
       await navigator.clipboard.writeText(roomId);
       setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    } catch {}
+      // Automatically close modal after copying so host doesn't have to manually close
+      setTimeout(() => {
+        setCopiedCode(false);
+        onClose();
+      }, 450);
+    } catch {
+      // Fallback
+    }
   };
 
   const handleNativeShare = async () => {
@@ -78,6 +84,9 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
           title: 'STATIC Voice Room',
           text: `Join my STATIC room using Code: ${roomId}`
         });
+        setTimeout(() => {
+          onClose();
+        }, 400);
       } catch {}
     }
   };
@@ -105,12 +114,16 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
           <label className="block text-xs uppercase font-mono tracking-wider text-static-muted mb-2">
             Room Access Code
           </label>
-          <div className="flex flex-col items-center justify-center p-5 rounded-2xl bg-surface-card border border-surface-border gap-3 text-center">
-            <span className="font-mono text-3xl sm:text-4xl tracking-[0.25em] font-extrabold text-static-accent select-all">
+          <div
+            onClick={handleCopyCode}
+            title="Click to copy code"
+            className="flex flex-col items-center justify-center p-5 rounded-2xl bg-surface-card hover:bg-surface-hover border border-surface-border hover:border-static-accent/40 gap-3 text-center cursor-pointer transition-all active:scale-[0.99] group"
+          >
+            <span className="font-mono text-3xl sm:text-4xl tracking-[0.25em] font-extrabold text-static-accent group-hover:scale-105 transition-transform select-all">
               {roomId}
             </span>
             <p className="text-xs text-static-subtext font-light">
-              Enter this 6-character code on the STATIC home screen to join.
+              Tap code or button below to copy.
             </p>
           </div>
         </div>

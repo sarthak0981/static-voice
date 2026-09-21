@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Sparkles, LogOut, Info, AlertTriangle, Check } from 'lucide-react';
+import { Volume2, Sparkles, LogOut, Info, AlertTriangle, Check, Crown } from 'lucide-react';
 
 export interface NotificationItem {
   id: string;
   message: string;
-  type?: 'info' | 'leave' | 'join' | 'alert' | 'success' | 'action';
-  icon?: 'leave' | 'join' | 'volume' | 'alert' | 'success' | 'info';
+  type?: 'info' | 'leave' | 'join' | 'alert' | 'success' | 'action' | 'host';
+  icon?: 'leave' | 'join' | 'volume' | 'alert' | 'success' | 'info' | 'host';
   actionText?: string;
   onAction?: () => void;
   durationMs?: number;
@@ -71,6 +71,8 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
 
   const renderIcon = () => {
     switch (currentItem.icon) {
+      case 'host':
+        return <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20 shrink-0" />;
       case 'leave':
         return <LogOut className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
       case 'join':
@@ -86,6 +88,8 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
     }
   };
 
+  const isHostNotification = currentItem.type === 'host';
+
   return (
     <aside
       aria-label="Notification Banner"
@@ -95,17 +99,21 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
         role="status"
         aria-live="polite"
         onClick={handleClick}
-        className={`pointer-events-auto inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#0D0F16]/95 border border-white/10 shadow-2xl shadow-black/80 backdrop-blur-xl text-white text-xs font-mono select-none cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`pointer-events-auto inline-flex items-center gap-2.5 px-4 py-2 rounded-full shadow-2xl shadow-black/80 backdrop-blur-xl text-white text-xs font-mono select-none cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isHostNotification
+            ? 'bg-[#0D0F16]/95 border border-amber-400/70 shadow-[0_0_22px_rgba(251,191,36,0.22)] hover:border-amber-400 hover:shadow-[0_0_28px_rgba(251,191,36,0.3)]'
+            : 'bg-[#0D0F16]/95 border border-white/10 hover:border-white/20'
+        } ${
           isEntering
             ? 'opacity-0 -translate-y-4 scale-95'
             : isExiting
             ? 'opacity-0 -translate-y-4 scale-95'
             : 'opacity-100 translate-y-0 scale-100'
-        } ${currentItem.type === 'action' ? 'hover:border-amber-400/40 hover:bg-[#141722]' : 'hover:border-white/20'}`}
+        } ${currentItem.type === 'action' ? 'hover:border-amber-400/40 hover:bg-[#141722]' : ''}`}
       >
         {renderIcon()}
 
-        <span className="truncate max-w-[280px] sm:max-w-[420px] tracking-wide text-neutral-200">
+        <span className={`truncate max-w-[280px] sm:max-w-[420px] tracking-wide ${isHostNotification ? 'text-amber-200 font-semibold' : 'text-neutral-200'}`}>
           {currentItem.message}
         </span>
 

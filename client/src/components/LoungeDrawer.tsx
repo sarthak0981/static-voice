@@ -195,11 +195,17 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
 
   return (
     <>
-      {!isCollapsed && (
-        <aside className="hidden lg:flex w-80 xl:w-96 border-l border-surface-border bg-surface/50 backdrop-blur-sm flex-col shrink-0 animate-in fade-in duration-200">
+      <aside
+        className={`hidden lg:flex flex-col border-surface-border bg-surface/50 backdrop-blur-sm shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden ${
+          isCollapsed
+            ? 'w-0 border-l-0 opacity-0 pointer-events-none'
+            : 'w-80 xl:w-96 border-l opacity-100'
+        }`}
+      >
+        <div className="w-80 xl:w-96 h-full flex flex-col shrink-0">
           {content}
-        </aside>
-      )}
+        </div>
+      </aside>
 
       {isOpenMobile && (
         <div className="lg:hidden fixed inset-0 z-50 flex">

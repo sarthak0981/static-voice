@@ -358,10 +358,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <button
             type="button"
             onClick={onToggleDiagnostics}
-            title="STATIC v1.3.3 • Developer Diagnostics"
+            title="STATIC v1.3.4 • Developer Diagnostics"
             className="text-[10px] text-white/20 hover:text-white/40 font-mono tracking-widest transition-colors cursor-pointer select-none"
           >
-            v1.3.3
+            v1.3.4
           </button>
         </div>
       </div>

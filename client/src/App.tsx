@@ -30,7 +30,6 @@ import {
   RoomSettingsModal
 } from './components/Modals.js';
 import { HostTransferModal } from './components/HostTransferModal.js';
-import { HostPromotedModal } from './components/HostPromotedModal.js';
 import { PartyChat } from './components/PartyChat.js';
 import {
   QueueScreen,
@@ -111,7 +110,6 @@ export function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isEndRoomModalOpen, setIsEndRoomModalOpen] = useState<boolean>(false);
   const [isHostTransferModalOpen, setIsHostTransferModalOpen] = useState<boolean>(false);
-  const [isHostPromotedModalOpen, setIsHostPromotedModalOpen] = useState<boolean>(false);
   const [isMobileLoungeOpen, setIsMobileLoungeOpen] = useState<boolean>(false);
   const [isLoungeCollapsed, setIsLoungeCollapsed] = useState<boolean>(false);
 
@@ -284,7 +282,13 @@ export function App() {
         prevRoleRef.current === 'GUEST' &&
         updatedState.currentUser.role === 'HOST'
       ) {
-        setIsHostPromotedModalOpen(true);
+        queueNotification({
+          message: 'You are now the host',
+          type: 'host',
+          icon: 'host',
+          durationMs: 4000
+        });
+        notificationSound.playJoinTing();
       }
       prevRoleRef.current = updatedState.currentUser.role;
 
@@ -415,11 +419,21 @@ export function App() {
       }
       setHostGraceSeconds(undefined);
 
-      // If this client is the new host, trigger promotion modal
-      if (roomState?.currentUser.participantId === payload.newHostId) {
-        setIsHostPromotedModalOpen(true);
+      // If this client is the new host, trigger golden outline notification
+      if (roomStateRef.current?.currentUser.participantId === payload.newHostId) {
+        queueNotification({
+          message: 'You are now the host',
+          type: 'host',
+          icon: 'host',
+          durationMs: 4000
+        });
+        notificationSound.playJoinTing();
       } else {
-        showToast(payload.message || 'A new host is running the room.');
+        queueNotification({
+          message: payload.message || 'A new host is running the room.',
+          type: 'info',
+          icon: 'info'
+        });
       }
     };
 
@@ -616,7 +630,7 @@ export function App() {
         try {
           localStorage.setItem(RECENT_ROOM_STORAGE_KEY, JSON.stringify({
             roomId: res.roomId,
-            roomName: roomName || `Party ${res.roomId}`,
+            roomName: roomName || 'STATIC Party',
             displayName,
             timestamp: Date.now()
           }));
@@ -661,7 +675,7 @@ export function App() {
         try {
           localStorage.setItem(RECENT_ROOM_STORAGE_KEY, JSON.stringify({
             roomId,
-            roomName: res.state.room?.roomName || res.state.roomName || `Party ${roomId}`,
+            roomName: res.state.room?.roomName || 'STATIC Party',
             displayName,
             timestamp: Date.now()
           }));
@@ -984,8 +998,8 @@ export function App() {
         />
         <ZenLoungeView
           displayName={currentUser.displayName}
-          partyName={roomState.room.roomName || `Room ${roomState.room.roomId}`}
-          roomCode={roomState.room.roomId}
+          partyName={roomState.room.roomName || 'Party'}
+          roomCode={isHost ? roomState.room.roomId : ''}
           microphoneState={microphoneState}
           onEnableMic={handleToggleMicrophone}
           onLeaveRoom={handleLeaveClick}
@@ -1125,12 +1139,6 @@ export function App() {
         onPromptEndRoom={() => setIsEndRoomModalOpen(true)}
       />
 
-      {/* Celebratory Host Promotion Modal */}
-      <HostPromotedModal
-        isOpen={isHostPromotedModalOpen}
-        onClose={() => setIsHostPromotedModalOpen(false)}
-      />
-
       {/* Developer WebRTC Diagnostics HUD (Ctrl+Shift+D or ?diag=1) */}
       <VoiceDiagnosticsModal
         isOpen={isDiagnosticsOpen}
@@ -1153,10 +1161,10 @@ export function App() {
       <button
         type="button"
         onClick={() => setIsDiagnosticsOpen(true)}
-        title="STATIC v1.3.3 • WebRTC Diagnostics HUD"
+        title="STATIC v1.3.4 • WebRTC Diagnostics HUD"
         className="fixed bottom-1.5 right-3 text-[10px] text-white/20 hover:text-white/50 font-mono tracking-widest select-none z-30 transition-colors cursor-pointer"
       >
-        v1.3.3
+        v1.3.4
       </button>
     </div>
   );

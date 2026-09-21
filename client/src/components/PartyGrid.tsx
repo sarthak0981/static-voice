@@ -93,101 +93,126 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
     setDropTargetIndex(null);
   };
 
-  return (
-    <div className="flex-1 flex flex-col h-full bg-[#07080B] p-2.5 sm:p-5 overflow-y-auto select-none">
-      {/* Grid Top Bar */}
-      <div className="flex items-center justify-between mb-3 sm:mb-4 px-1 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs sm:text-sm font-mono font-bold text-white tracking-wider flex items-center gap-2">
-            <span className="truncate max-w-[140px] sm:max-w-[200px]">{roomName || 'PARTY'}</span>
-            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-[#8A99AD] font-mono shrink-0">
-              {participants.length}/8
-            </span>
-          </span>
+  const isDrawerOpen = !isLoungeCollapsed && isHost && loungeCount > 0;
 
-          {isHost && (
-            <span className="text-[10px] font-mono text-[#4E586E] hidden md:inline ml-2">
-              (Drag cards to reorder)
+  // Calculate optimal columns based on side drawer open/closed and participant count
+  const getGridColsClass = () => {
+    if (participants.length <= 1) {
+      return 'grid-cols-1 max-w-sm mx-auto w-full';
+    }
+    if (participants.length === 2) {
+      return 'grid-cols-2 max-w-xl mx-auto w-full';
+    }
+    if (participants.length <= 4) {
+      return 'grid-cols-2 sm:grid-cols-2 md:grid-cols-4 max-w-4xl mx-auto w-full';
+    }
+    // 5 to 8 participants: adaptively respond to side drawer
+    if (isDrawerOpen) {
+      return 'grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 w-full';
+    }
+    return 'grid-cols-2 sm:grid-cols-2 md:grid-cols-4 w-full';
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-[#07080B] p-3 sm:p-5 overflow-y-auto select-none transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+      <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col justify-start pb-28 sm:pb-32">
+        {/* Grid Top Bar */}
+        <div className="flex items-center justify-between mb-3 sm:mb-4 px-1 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs sm:text-sm font-mono font-bold text-white tracking-wider flex items-center gap-2">
+              <span className="truncate max-w-[140px] sm:max-w-[200px]">{roomName || 'PARTY'}</span>
+              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-[#8A99AD] font-mono shrink-0">
+                {participants.length}/8
+              </span>
             </span>
+
+            {isHost && (
+              <span className="text-[10px] font-mono text-[#4E586E] hidden md:inline ml-2">
+                (Drag cards to reorder)
+              </span>
+            )}
+          </div>
+
+          {/* Right action: Lounge Drawer Toggle button */}
+          {loungeCount > 0 && onToggleLoungeCollapse && (
+            <button
+              type="button"
+              onClick={onToggleLoungeCollapse}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-colors cursor-pointer ${
+                !isLoungeCollapsed
+                  ? 'bg-[#00E599]/15 border-[#00E599]/40 text-[#00E599]'
+                  : 'bg-white/5 hover:bg-white/10 border-white/10 text-[#8A99AD] hover:text-white'
+              }`}
+            >
+              <PanelRightOpen className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">LOUNGE</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-[#00E599] text-black text-[10px] font-bold font-mono">
+                {loungeCount}
+              </span>
+            </button>
           )}
         </div>
 
-        {/* Right action: Lounge Drawer Toggle button */}
-        {loungeCount > 0 && onToggleLoungeCollapse && (
-          <button
-            type="button"
-            onClick={onToggleLoungeCollapse}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono transition-colors cursor-pointer ${
-              !isLoungeCollapsed
-                ? 'bg-[#00E599]/15 border-[#00E599]/40 text-[#00E599]'
-                : 'bg-white/5 hover:bg-white/10 border-white/10 text-[#8A99AD] hover:text-white'
-            }`}
-          >
-            <PanelRightOpen className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">LOUNGE</span>
-            <span className="px-1.5 py-0.2 rounded-full bg-[#00E599] text-black text-[10px] font-bold font-mono">
-              {loungeCount}
-            </span>
-          </button>
-        )}
-      </div>
-
-      {/* Grid Canvas: 1 to 8 participants */}
-      {participants.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 border border-dashed border-white/10 rounded-2xl sm:rounded-3xl bg-[#090B10]/50">
-          <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-[#8A99AD] mb-3">
-            <Mic className="w-6 h-6" />
-          </div>
-          <h3 className="text-sm font-mono font-bold text-white mb-1">
-            Party is empty
-          </h3>
-          <p className="text-xs text-[#8A99AD] font-mono max-w-xs mb-4">
-            Share the 6-character room code to start talking in real time without downloads or accounts.
-          </p>
-          <button
-            type="button"
-            onClick={onOpenShareModal}
-            className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono font-semibold tracking-wider transition-colors cursor-pointer active:scale-95"
-          >
-            SHARE ROOM CODE
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 auto-rows-fr">
-          {participants.map((participant, index) => {
-            const isLocal = participant.participantId === currentUserId;
-            const isParticipantHost = participant.role === 'HOST';
-            const isSpeaking = participant.isSpeaking;
-            const isBeingDragged = draggedIndex === index;
-            const isDropTarget = dropTargetIndex === index && draggedIndex !== index;
-            const userVol = peerVolumes[participant.participantId] ?? 100;
-            const isAudioMutedLocally = userVol === 0;
-            const quality = peerQualities[participant.participantId] || peerQualities[participant.socketId];
-            const isDisconnected = disconnectedPeerIds.has(participant.participantId);
-
-            return (
-              <div
-                key={participant.participantId}
-                data-participant-index={index}
-                draggable={isHost}
-                onDragStart={(e) => handleDragStart(e, index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDrop={(e) => handleDrop(e, index)}
-                onDragEnd={handleDragEnd}
-                className={`relative flex flex-col justify-between p-3 sm:p-4 rounded-2xl transition-all duration-200 ease-out select-none ${
-                  isBeingDragged ? 'opacity-40 scale-95 ring-2 ring-[#00E599]' : ''
-                } ${isDropTarget ? 'scale-105 ring-2 ring-[#00E599]/80 bg-[#00E599]/5' : ''} ${
-                  isDisconnected
-                    ? 'border-2 border-dashed border-rose-500/60 bg-rose-950/20 shadow-[0_0_16px_rgba(244,63,94,0.18)]'
-                    : isParticipantHost
-                    ? 'bg-gradient-to-b from-amber-500/10 to-[#0E1017] border border-amber-500/30 shadow-lg shadow-black/40'
-                    : 'bg-[#0E1017]/90 border border-white/8 hover:border-white/20 shadow-md shadow-black/30'
-                } ${
-                  isSpeaking && !isDisconnected
-                    ? 'border-[#00E599]/80 ring-1 ring-[#00E599]/50 shadow-[0_0_20px_rgba(0,229,153,0.16)] bg-[#10161A]/90'
-                    : ''
-                }`}
+        {/* Grid Canvas: 1 to 8 participants */}
+        {participants.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 border border-dashed border-white/10 rounded-2xl sm:rounded-3xl bg-[#090B10]/50 my-auto">
+            <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-[#8A99AD] mb-3">
+              <Mic className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-mono font-bold text-white mb-1">
+              Party is empty
+            </h3>
+            <p className="text-xs text-[#8A99AD] font-mono max-w-xs mb-4">
+              {isHost
+                ? 'Share the 6-character room code to start talking in real time without downloads or accounts.'
+                : 'Waiting for host to admit participants to the party.'}
+            </p>
+            {isHost && (
+              <button
+                type="button"
+                onClick={onOpenShareModal}
+                className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono font-semibold tracking-wider transition-colors cursor-pointer active:scale-95"
               >
+                SHARE ROOM CODE
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className={`grid gap-3 sm:gap-4 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${getGridColsClass()}`}>
+            {participants.map((participant, index) => {
+              const isLocal = participant.participantId === currentUserId;
+              const isParticipantHost = participant.role === 'HOST';
+              const isSpeaking = participant.isSpeaking;
+              const isBeingDragged = draggedIndex === index;
+              const isDropTarget = dropTargetIndex === index && draggedIndex !== index;
+              const userVol = peerVolumes[participant.participantId] ?? 100;
+              const isAudioMutedLocally = userVol === 0;
+              const quality = peerQualities[participant.participantId] || peerQualities[participant.socketId];
+              const isDisconnected = disconnectedPeerIds.has(participant.participantId);
+
+              return (
+                <div
+                  key={participant.participantId}
+                  data-participant-index={index}
+                  draggable={isHost}
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={(e) => handleDrop(e, index)}
+                  onDragEnd={handleDragEnd}
+                  className={`relative flex flex-col justify-between p-3.5 sm:p-4 min-h-[160px] sm:min-h-[180px] max-h-[220px] rounded-2xl sm:rounded-3xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
+                    isBeingDragged ? 'opacity-40 scale-95 ring-2 ring-[#00E599]' : ''
+                  } ${isDropTarget ? 'scale-105 ring-2 ring-[#00E599]/80 bg-[#00E599]/5' : ''} ${
+                    isDisconnected
+                      ? 'border-2 border-dashed border-rose-500/60 bg-rose-950/20 shadow-[0_0_16px_rgba(244,63,94,0.18)]'
+                      : isParticipantHost
+                      ? 'bg-gradient-to-b from-amber-500/10 via-[#0B0D15]/95 to-[#0B0D15] border border-amber-500/30 shadow-lg shadow-black/40'
+                      : 'bg-[#0B0D15]/95 border border-white/[0.08] hover:border-white/20 shadow-md shadow-black/30'
+                  } ${
+                    isSpeaking && !isDisconnected
+                      ? 'border-[#00E599]/80 ring-2 ring-[#00E599]/40 shadow-[0_0_24px_rgba(0,229,153,0.2)] bg-[#0E151A]/95'
+                      : ''
+                  }`}
+                >
                 {/* Top Strip: Badges & Diagnostics */}
                 <div className="flex items-center justify-between gap-1 mb-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -370,6 +395,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
           })}
         </div>
       )}
+      </div>
     </div>
   );
 };

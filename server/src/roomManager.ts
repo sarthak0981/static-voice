@@ -98,7 +98,7 @@ export class RoomManager {
     const participantId = this.generateParticipantId();
     const sessionToken = existingToken || this.generateSessionToken();
     const now = Date.now();
-    const cleanRoomName = roomName?.trim() || `Party ${roomId}`;
+    const cleanRoomName = roomName?.trim() || 'STATIC Party';
 
     const hostParticipant: Participant = {
       participantId,
