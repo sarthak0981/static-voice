@@ -74,7 +74,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               return;
             }
             if (data.invitationsOpen === false) {
-              setCodeError("The invitations are closed 😊");
+              setCodeError("Invitations for this room are paused.");
               return;
             }
             setTargetRoomId(code);
@@ -153,7 +153,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       }
 
       if (data.invitationsOpen === false) {
-        setCodeError("The invitations are closed 😊");
+        setCodeError("Invitations for this room are paused.");
         return;
       }
 
@@ -223,12 +223,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         {/* Hero Title */}
         <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mb-3 sm:mb-4 leading-tight">
-          TALK. WITHOUT THE NOISE.
+          Voice, without the noise.
         </h1>
 
         {/* Supporting subtext */}
-        <p className="text-sm sm:text-lg text-static-subtext mb-8 sm:mb-10 max-w-sm font-normal">
-          Instant voice rooms. No accounts. No downloads. Just talk.
+        <p className="text-sm sm:text-base text-static-subtext mb-8 sm:mb-10 max-w-sm font-normal">
+          Direct, private voice conversations. No accounts or downloads required.
         </p>
 
         {/* Error message if any */}
@@ -245,7 +245,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-[#00E599] text-[10px] font-mono font-bold tracking-wider mb-1">
                 <span className="w-2 h-2 rounded-full bg-[#00E599] animate-pulse" />
-                <span>ACCIDENTALLY DISCONNECTED?</span>
+                <span>PREVIOUS SESSION</span>
               </div>
               <p className="text-sm font-semibold text-white truncate">
                 {recentRoom.roomName || `Party ${recentRoom.roomId}`}
@@ -286,7 +286,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           className="w-full py-3.5 sm:py-4 px-6 rounded-xl bg-static-accent text-background font-semibold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2 hover:bg-static-accent/90 active:scale-[0.99] transition-all duration-150 shadow-lg shadow-static-accent/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed group min-h-[48px]"
         >
           <Sparkles className="w-5 h-5 transition-transform group-hover:rotate-12" />
-          <span>CREATE ROOM</span>
+          <span>Create Room</span>
         </button>
 
         {/* Divider */}
@@ -303,7 +303,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="relative flex items-center">
             <input
               type="text"
-              placeholder="Enter Room ID (e.g. 7K4X92)"
+              placeholder="Room code (e.g. 7K4X92)"
               value={roomIdInput}
               onChange={(e) => handleCodeChange(e.target.value)}
               disabled={isLoading}
@@ -343,17 +343,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             {isValidatingCode ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-static-accent" />
-                <span>CHECKING ROOM…</span>
+                <span>Checking room…</span>
               </>
             ) : (
-              <span>JOIN ROOM</span>
+              <span>Join Room</span>
             )}
           </button>
         </form>
 
         <div className="mt-12 flex flex-col items-center justify-center gap-2">
           <p className="text-[11px] text-[#4E586E] font-mono tracking-wide">
-            NO ACCOUNTS • END-TO-END AUDIO • ZERO RECORDINGS
+            PRIVATE • EPHEMERAL • DIRECT
           </p>
           <button
             type="button"
@@ -373,7 +373,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-surface-border mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-static-accent" />
-                <h3 className="text-lg font-bold text-white font-sans">CREATE PARTY</h3>
+                <h3 className="text-lg font-bold text-white font-sans">Create Room</h3>
               </div>
               <button
                 type="button"
@@ -387,7 +387,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <form onSubmit={handleConfirmCreate} className="space-y-4">
               <div>
                 <label className="block text-xs uppercase font-mono tracking-wider text-static-muted mb-1.5">
-                  Party / Room Name <span className="text-static-muted/70">(Optional)</span>
+                  Room Name <span className="text-static-muted/70">(Optional)</span>
                 </label>
                 <input
                   type="text"
@@ -450,14 +450,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   onClick={() => setIsCreateModalOpen(false)}
                   className="flex-1 py-3 px-4 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-xs font-mono font-medium transition-colors cursor-pointer min-h-[44px]"
                 >
-                  CANCEL
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!displayName.trim() || Boolean(nameError) || isLoading}
                   className="flex-1 py-3 px-4 rounded-xl bg-static-accent text-background font-mono font-bold text-xs hover:bg-static-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
                 >
-                  {isLoading ? 'VERIFYING AUDIO…' : 'START PARTY'}
+                  {isLoading ? 'Preparing audio…' : 'Create Room'}
                 </button>
               </div>
             </form>
@@ -472,7 +472,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-surface-border mb-4">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-static-accent" />
-                <h3 className="text-lg font-bold text-white font-sans">JOIN ROOM</h3>
+                <h3 className="text-lg font-bold text-white font-sans">Join Room</h3>
               </div>
               <button
                 type="button"
@@ -547,14 +547,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   onClick={() => setIsJoinModalOpen(false)}
                   className="flex-1 py-3 px-4 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-xs font-mono font-medium transition-colors cursor-pointer min-h-[44px]"
                 >
-                  CANCEL
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!displayName.trim() || Boolean(nameError) || isLoading}
                   className="flex-1 py-3 px-4 rounded-xl bg-static-accent text-background font-mono font-bold text-xs hover:bg-static-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
                 >
-                  {isLoading ? 'VERIFYING AUDIO…' : 'ENTER ROOM'}
+                  {isLoading ? 'Preparing audio…' : 'Join Room'}
                 </button>
               </div>
             </form>

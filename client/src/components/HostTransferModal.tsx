@@ -39,7 +39,7 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
         <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-4">
           <div className="flex items-center gap-2">
             <Crown className="w-5 h-5 text-amber-400" />
-            <h3 className="text-lg font-bold text-white font-sans">LEAVE PARTY</h3>
+            <h3 className="text-lg font-bold text-white font-sans">Pass Host Controls</h3>
           </div>
           <button
             type="button"
@@ -52,7 +52,7 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
         </div>
 
         <p className="text-xs text-static-subtext mb-5">
-          You are currently the host. Choose who will take over host controls before you leave the party:
+          Pass host controls to keep the room open after you leave:
         </p>
 
         {/* Option 1: Auto Transfer */}
@@ -65,13 +65,13 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles className="w-4 h-4 text-static-accent" />
-                <span className="text-sm font-semibold text-white">AUTO TRANSFER</span>
+                <span className="text-sm font-semibold text-white">Auto Transfer</span>
                 <span className="text-[10px] font-mono uppercase bg-static-accent/20 text-static-accent px-2 py-0.5 rounded-full">
                   Recommended
                 </span>
               </div>
               <p className="text-xs text-static-subtext">
-                Transfers host to the longest-running party member:
+                Pass to longest-running member:
                 {longestMember ? (
                   <span className="text-static-accent font-semibold ml-1">
                     {longestMember.displayName}
@@ -88,7 +88,7 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
         {eligibleMembers.length > 0 && (
           <div className="mb-6">
             <span className="block text-xs uppercase font-mono tracking-wider text-static-muted mb-2">
-              Or Manually Select New Host:
+              Or select new host:
             </span>
             <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
               {eligibleMembers.map((member) => (
@@ -109,7 +109,7 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
 
                   <span className="text-[11px] font-mono text-static-accent flex items-center gap-1">
                     <UserCheck className="w-3.5 h-3.5" />
-                    <span>MAKE HOST</span>
+                    <span>Select</span>
                   </span>
                 </button>
               ))}
@@ -128,7 +128,7 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
             className="w-full py-2.5 px-4 rounded-xl bg-static-danger/10 hover:bg-static-danger/20 border border-static-danger/30 text-static-danger text-xs font-mono font-semibold tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-2"
           >
             <AlertTriangle className="w-3.5 h-3.5" />
-            <span>END PARTY FOR EVERYONE</span>
+            <span>End Room Instead</span>
           </button>
 
           <button
@@ -136,7 +136,7 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
             onClick={onClose}
             className="w-full py-2 text-xs font-mono text-static-muted hover:text-white transition-colors cursor-pointer"
           >
-            CANCEL AND STAY IN PARTY
+            Stay in Party
           </button>
         </div>
       </div>

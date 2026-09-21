@@ -24,9 +24,9 @@ export const EndRoomModal: React.FC<EndRoomModalProps> = ({
           <AlertTriangle className="w-6 h-6" />
         </div>
 
-        <h3 className="text-lg font-bold text-white mb-2">End this room for everyone?</h3>
+        <h3 className="text-lg font-bold text-white mb-2">End this room?</h3>
         <p className="text-sm text-static-subtext mb-6">
-          All party and lounge members will be disconnected and the room will be closed permanently.
+          Everyone will be disconnected and this space will close.
         </p>
 
         <div className="flex items-center gap-3">
@@ -36,7 +36,7 @@ export const EndRoomModal: React.FC<EndRoomModalProps> = ({
             disabled={isLoading}
             className="flex-1 py-3 px-4 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-sm font-medium transition-colors cursor-pointer min-h-[44px]"
           >
-            CANCEL
+            Cancel
           </button>
           <button
             type="button"
@@ -44,7 +44,7 @@ export const EndRoomModal: React.FC<EndRoomModalProps> = ({
             disabled={isLoading}
             className="flex-1 py-3 px-4 rounded-xl bg-static-danger text-white font-semibold text-sm hover:bg-static-danger/90 transition-colors shadow-lg shadow-static-danger/20 cursor-pointer disabled:opacity-50 min-h-[44px]"
           >
-            {isLoading ? 'CLOSING…' : 'END ROOM'}
+            {isLoading ? 'Closing…' : 'End Room'}
           </button>
         </div>
       </div>
@@ -97,7 +97,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
         <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-5">
           <div className="flex items-center gap-2">
             <Share2 className="w-5 h-5 text-static-accent" />
-            <h3 className="text-lg font-bold text-white">SHARE ROOM CODE</h3>
+            <h3 className="text-lg font-bold text-white">Share Room Code</h3>
           </div>
           <button
             type="button"
@@ -123,7 +123,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
               {roomId}
             </span>
             <p className="text-xs text-static-subtext font-light">
-              Tap code or button below to copy.
+              Tap code to copy.
             </p>
           </div>
         </div>
@@ -135,7 +135,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
           className="w-full py-3.5 px-4 min-h-[44px] rounded-xl bg-static-accent text-background font-mono font-bold text-xs tracking-wider flex items-center justify-center gap-2 hover:bg-static-accent/90 active:scale-[0.99] transition-all shadow-md cursor-pointer mb-3"
         >
           {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-          <span>{copiedCode ? 'CODE COPIED TO CLIPBOARD' : 'COPY ROOM CODE'}</span>
+          <span>{copiedCode ? 'Code Copied' : 'Copy Room Code'}</span>
         </button>
 
         {/* Mobile Web Share API option */}
@@ -146,7 +146,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
             className="w-full py-3 px-4 min-h-[44px] rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-xs font-mono font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <Share2 className="w-3.5 h-3.5 text-static-accent" />
-            <span>SHARE CODE VIA APPS</span>
+            <span>Share via Apps</span>
           </button>
         )}
       </div>
@@ -177,7 +177,7 @@ export const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
         <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-5">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-static-accent" />
-            <h3 className="text-lg font-bold text-white">ROOM SETTINGS</h3>
+            <h3 className="text-lg font-bold text-white">Room Settings</h3>
           </div>
           <button
             type="button"
@@ -195,8 +195,8 @@ export const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
             <span className="block text-sm font-semibold text-white">Room Invitations</span>
             <span className="block text-xs text-static-muted">
               {room.invitationsOpen
-                ? 'Anyone with the link can join the Lounge'
-                : 'New joins are blocked until reopened'}
+                ? 'Open to new guests'
+                : 'Invitations paused'}
             </span>
           </div>
 
@@ -212,12 +212,12 @@ export const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
             {room.invitationsOpen ? (
               <>
                 <Unlock className="w-3.5 h-3.5" />
-                <span>OPEN</span>
+                <span>Open</span>
               </>
             ) : (
               <>
                 <Lock className="w-3.5 h-3.5" />
-                <span>CLOSED</span>
+                <span>Paused</span>
               </>
             )}
           </button>
@@ -254,7 +254,7 @@ export const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
             }}
             className="w-full py-3 px-4 min-h-[44px] rounded-xl bg-static-danger/10 hover:bg-static-danger/20 border border-static-danger/30 text-static-danger text-sm font-semibold tracking-wider font-mono transition-colors cursor-pointer"
           >
-            END ROOM FOR EVERYONE
+            End Room
           </button>
         </div>
       </div>

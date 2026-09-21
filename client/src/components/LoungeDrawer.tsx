@@ -95,7 +95,7 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
           <div className="flex items-start gap-2 mb-2 text-left">
             <AlertTriangle className="w-4 h-4 text-static-danger shrink-0 mt-0.5" />
             <p className="text-xs text-white">
-              Remove all <span className="font-bold">{participants.length}</span> waiting guests from the lounge? Active party members will not be affected.
+              Clear all <span className="font-bold">{participants.length}</span> waiting guests from the lounge? Active party members will stay in the party.
             </p>
           </div>
           <div className="flex items-center gap-2 justify-end">
@@ -104,7 +104,7 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
               onClick={() => setIsConfirmClearOpen(false)}
               className="px-2.5 py-1 rounded-md bg-surface-card hover:bg-surface-elevated text-white text-[11px] font-mono cursor-pointer"
             >
-              CANCEL
+              Cancel
             </button>
             <button
               type="button"
@@ -114,7 +114,7 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
               }}
               className="px-2.5 py-1 rounded-md bg-static-danger hover:bg-static-danger/90 text-white text-[11px] font-mono font-bold cursor-pointer"
             >
-              CLEAR LOUNGE
+              Clear Lounge
             </button>
           </div>
         </div>
@@ -159,12 +159,11 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
                       type="button"
                       onClick={() => onAdmitParticipant(user.participantId)}
                       disabled={isPartyFull}
-                      title={isPartyFull ? 'The party is packed! 🎉' : 'Admit to Party'}
+                      title={isPartyFull ? 'Party is full (8/8)' : 'Admit to Party'}
                       className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-static-accent/15 hover:bg-static-accent text-static-accent hover:text-background border border-static-accent/30 text-[11px] font-mono font-semibold tracking-wider transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 shrink-0"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">COME ON IN</span>
-                      <span className="sm:hidden">ADMIT</span>
+                      <span>ADMIT</span>
                     </button>
 
                     <button

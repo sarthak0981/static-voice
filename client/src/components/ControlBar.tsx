@@ -123,7 +123,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={onToggleMicrophone}
             disabled={isMicConnecting}
             aria-label={isMicLive ? 'Mute Microphone' : 'Unmute Microphone'}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 min-h-[40px] min-w-[40px] rounded-full font-mono text-xs font-semibold tracking-wider transition-all duration-200 cursor-pointer active:scale-95 shadow-sm ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 min-h-[40px] min-w-[40px] rounded-full font-mono text-xs font-semibold tracking-wider transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shadow-sm ${
               isMicLive
                 ? 'bg-[#00E599] text-black hover:bg-[#00E599]/90 font-bold shadow-[0_0_18px_rgba(0,229,153,0.35)]'
                 : isMicMuted
@@ -172,7 +172,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={onToggleChat}
             aria-label="Toggle Party Chat"
             title="Party Chat"
-            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 ${
               isChatOpen
                 ? 'bg-[#00E599] text-black border-[#00E599] font-bold shadow-[0_0_14px_rgba(0,229,153,0.3)]'
                 : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
@@ -194,8 +194,8 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             type="button"
             onClick={onToggleLoungeCollapse}
             aria-label={isLoungeCollapsed ? 'Show Lounge' : 'Hide Lounge'}
-            title={isLoungeCollapsed ? 'Unhide Lounge Drawer' : 'Hide Lounge Drawer'}
-            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 ${
+            title={isLoungeCollapsed ? 'Show Lounge' : 'Hide Lounge'}
+            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 ${
               !isLoungeCollapsed
                 ? 'bg-white/20 border-[#00E599]/50 text-white shadow-sm'
                 : 'bg-white/5 border-white/10 text-[#8A99AD] hover:text-white hover:bg-white/10'
@@ -216,9 +216,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
           <button
             type="button"
             onClick={() => onToggleInvitations(!invitationsOpen)}
-            title={invitationsOpen ? 'Stop new guests from joining' : 'Reopen invitations'}
-            aria-label={invitationsOpen ? 'Stop Invitations' : 'Reopen Invitations'}
-            className={`p-2 sm:px-2.5 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-200 cursor-pointer flex items-center justify-center gap-1 text-xs font-mono ${
+            title={invitationsOpen ? 'Pause invitations' : 'Reopen invitations'}
+            aria-label={invitationsOpen ? 'Pause Invitations' : 'Reopen Invitations'}
+            className={`p-2 sm:px-2.5 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1 text-xs font-mono ${
               invitationsOpen
                 ? 'bg-white/5 border-white/10 text-[#8A99AD] hover:text-rose-400 hover:border-rose-500/30'
                 : 'bg-amber-500/20 border-amber-500/40 text-amber-300'
@@ -243,7 +243,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               onClick={onOpenShareModal}
               aria-label="Share Room Code"
               title="Share Room Code"
-              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 min-h-[40px] rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono transition-all duration-200 cursor-pointer"
+              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 min-h-[40px] rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer"
             >
               <Share2 className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-[#00E599]" />
               <span className="hidden sm:inline">CODE</span>
@@ -260,9 +260,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             <button
               type="button"
               onClick={onPromptEndRoom}
-              aria-label="End Party"
-              title="End party for everyone"
-              className="hidden sm:flex items-center gap-1 px-3 py-2 min-h-[40px] rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-xs font-mono font-semibold transition-all duration-200 cursor-pointer active:scale-95"
+              aria-label="End Room"
+              title="End room"
+              className="hidden sm:flex items-center gap-1 px-3 py-2 min-h-[40px] rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
             >
               <span>END</span>
             </button>
@@ -273,7 +273,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={onLeaveRoom}
             aria-label="Leave Room"
             title="Leave room"
-            className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 min-h-[40px] rounded-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-mono font-semibold transition-all duration-200 cursor-pointer active:scale-95"
+            className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 min-h-[40px] rounded-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
           >
             <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
             <span>LEAVE</span>

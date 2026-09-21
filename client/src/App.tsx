@@ -348,8 +348,8 @@ export function App() {
       setNotificationQueue([]);
       setDisconnectedPeerIds(new Set());
       setScreenMessage({
-        title: 'REMOVED FROM ROOM',
-        message: payload.reason || 'You were removed from the room.'
+        title: 'Removed from Room',
+        message: payload.reason || 'You were disconnected by the host.'
       });
       setScreenState('REMOVED');
       setRoomState(null);
@@ -373,8 +373,8 @@ export function App() {
       setNotificationQueue([]);
       setDisconnectedPeerIds(new Set());
       setScreenMessage({
-        title: 'LOUNGE CLEARED',
-        message: payload.reason || 'The host cleared the waiting lounge.'
+        title: 'Lounge Closed',
+        message: payload.reason || 'The waiting area was closed by the host.'
       });
       setScreenState('REMOVED');
       setRoomState(null);
@@ -398,8 +398,8 @@ export function App() {
       setNotificationQueue([]);
       setDisconnectedPeerIds(new Set());
       setScreenMessage({
-        title: 'REMOVED FROM PARTY',
-        message: payload.reason || 'The host removed you from the Party.'
+        title: 'Moved from Party',
+        message: payload.reason || 'The host moved you from the party.'
       });
       setScreenState('REMOVED');
       setRoomState(null);
@@ -423,9 +423,8 @@ export function App() {
       setNotificationQueue([]);
       setDisconnectedPeerIds(new Set());
       setScreenMessage({
-        title: 'ROOM ENDED',
-        message: payload.reason || 'The host closed the room. 👋',
-        submessage: 'This room has been permanently terminated.'
+        title: 'Room Ended',
+        message: payload.reason || 'This voice session has ended.'
       });
       setScreenState('ROOM_ENDED');
       setRoomState(null);
@@ -507,7 +506,7 @@ export function App() {
     };
 
     const handleInvitationsUpdated = (payload: { open: boolean }) => {
-      showToast(payload.open ? 'Invitations opened.' : 'The invitations are closed 😊');
+      showToast(payload.open ? 'Invitations opened.' : 'Invitations paused.');
     };
 
     const handleParticipantJoinedParty = (payload: { participantId: string; displayName: string }) => {
@@ -999,10 +998,10 @@ export function App() {
       <div className="ui-fade-transition w-full h-full">
         <MessageScreen
           title={screenMessage.title}
-          badge="ROOM TERMINATED"
+          badge="SESSION ENDED"
           message={screenMessage.message}
           submessage={screenMessage.submessage}
-          actionText="RETURN TO STATIC"
+          actionText="Return Home"
           onAction={handleReturnHome}
           icon="ended"
         />
@@ -1015,9 +1014,9 @@ export function App() {
       <div className="ui-fade-transition w-full h-full">
         <MessageScreen
           title={screenMessage.title}
-          badge="ROOM UPDATE"
+          badge="UPDATE"
           message={screenMessage.message}
-          actionText="RETURN TO STATIC"
+          actionText="Return Home"
           onAction={handleReturnHome}
           icon="removed"
         />

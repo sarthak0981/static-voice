@@ -164,7 +164,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
             </h3>
             <p className="text-xs text-[#8A99AD] font-mono max-w-xs mb-4">
               {isHost
-                ? 'Share the 6-character room code to start talking in real time without downloads or accounts.'
+                ? 'Share your room code to invite others.'
                 : 'Waiting for host to admit participants to the party.'}
             </p>
             {isHost && (
@@ -173,7 +173,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                 onClick={onOpenShareModal}
                 className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono font-semibold tracking-wider transition-colors cursor-pointer active:scale-95"
               >
-                SHARE ROOM CODE
+                Share Room Code
               </button>
             )}
           </div>

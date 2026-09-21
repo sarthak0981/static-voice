@@ -86,7 +86,7 @@ export const ZenLoungeView: React.FC<ZenLoungeViewProps> = ({
           <p className="text-xs sm:text-sm text-[#8A99AD] leading-relaxed font-light">
             You are in the waiting lounge for{' '}
             <span className="text-white font-medium">{partyName}</span>.
-            Take a breath, the host will let you in shortly.
+            The host will admit you shortly.
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export const ZenLoungeView: React.FC<ZenLoungeViewProps> = ({
 
           <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#00E599]/10 border border-[#00E599]/30 text-xs font-mono text-[#00E599]">
             <Check className="w-3.5 h-3.5 text-[#00E599]" />
-            <span>Microphone Tested & Ready</span>
+            <span>Mic Ready</span>
           </div>
         </div>
       </main>
@@ -111,11 +111,11 @@ export const ZenLoungeView: React.FC<ZenLoungeViewProps> = ({
           className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 min-h-[44px] rounded-xl bg-white/5 hover:bg-rose-500/10 border border-white/10 hover:border-rose-500/30 text-xs font-mono text-[#8A99AD] hover:text-rose-400 transition-all duration-300 active:scale-95 cursor-pointer"
         >
           <LogOut className="w-4 h-4" />
-          <span>LEAVE WAITING ROOM</span>
+          <span>Leave Lounge</span>
         </button>
 
         <p className="text-[10px] sm:text-[11px] text-[#4E586E] font-mono tracking-wide text-center">
-          Audio and microphone remain inactive while in lounge
+          Audio is inactive in the lounge.
         </p>
       </footer>
     </div>

@@ -1,4 +1,4 @@
-import { Clock, Lock, LogOut, ArrowLeft, Mic } from 'lucide-react';
+import { Clock, Lock, LogOut, ArrowLeft, Mic, UserX, AlertTriangle } from 'lucide-react';
 
 interface QueueScreenProps {
   queuePosition?: number;
@@ -14,11 +14,11 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queuePosition = 1, onL
         </div>
 
         <span className="text-xs uppercase font-mono tracking-widest text-static-muted mb-2">
-          ROOM FULL
+          WAITING IN LINE
         </span>
 
         <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3 leading-snug">
-          The room is full, wait man! 😅
+          Room is currently full
         </h2>
 
         <div className="my-5 sm:my-6 px-4 sm:px-6 py-3.5 sm:py-4 rounded-2xl bg-surface-card border border-surface-border w-full">
@@ -26,7 +26,7 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queuePosition = 1, onL
             You're #{queuePosition} in line
           </span>
           <span className="text-xs text-static-subtext">
-            We'll let you in when a spot opens.
+            You will be admitted automatically when a spot opens.
           </span>
         </div>
 
@@ -36,7 +36,7 @@ export const QueueScreen: React.FC<QueueScreenProps> = ({ queuePosition = 1, onL
           className="w-full py-3.5 px-5 min-h-[44px] rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-sm font-mono tracking-wider font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
         >
           <LogOut className="w-4 h-4" />
-          <span>LEAVE QUEUE</span>
+          <span>Leave Queue</span>
         </button>
       </div>
     </div>
@@ -56,15 +56,15 @@ export const InvitationsClosedScreen: React.FC<InvitationsClosedScreenProps> = (
         </div>
 
         <span className="text-xs uppercase font-mono tracking-widest text-static-muted mb-2">
-          INVITATIONS CLOSED
+          INVITATIONS PAUSED
         </span>
 
         <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3">
-          The invitations are closed 😊
+          Invitations are paused
         </h2>
 
         <p className="text-xs sm:text-sm text-static-subtext mb-6 sm:mb-8">
-          The host has temporarily paused new entries. Ask the host to reopen the room.
+          The host is not accepting new guests right now.
         </p>
 
         <button
@@ -73,7 +73,7 @@ export const InvitationsClosedScreen: React.FC<InvitationsClosedScreenProps> = (
           className="w-full py-3.5 px-5 min-h-[44px] rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-sm font-mono tracking-wider font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>BACK TO STATIC</span>
+          <span>Back to Home</span>
         </button>
       </div>
     </div>
@@ -102,8 +102,14 @@ export const MessageScreen: React.FC<MessageScreenProps> = ({
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-background bg-static-noise text-static-text text-center">
       <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-surface border border-surface-border shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-surface-card border border-surface-border text-static-accent flex items-center justify-center mb-5 sm:mb-6 text-2xl">
-          {icon === 'ended' ? '👋' : icon === 'removed' ? '🚪' : '⚠️'}
+        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-surface-card border border-surface-border flex items-center justify-center mb-5 sm:mb-6">
+          {icon === 'ended' ? (
+            <LogOut className="w-7 h-7 text-[#8A99AD]" />
+          ) : icon === 'removed' ? (
+            <UserX className="w-7 h-7 text-rose-400" />
+          ) : (
+            <AlertTriangle className="w-7 h-7 text-amber-400" />
+          )}
         </div>
 
         {badge && (
