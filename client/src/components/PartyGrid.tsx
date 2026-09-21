@@ -210,7 +210,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDrop={(e) => handleDrop(e, index)}
                   onDragEnd={handleDragEnd}
-                  className={`relative flex flex-col justify-between p-3.5 sm:p-4 min-h-[160px] sm:min-h-[180px] max-h-[220px] rounded-2xl sm:rounded-3xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
+                  className={`relative flex flex-col justify-between p-2.5 sm:p-4 min-h-[155px] sm:min-h-[180px] max-h-[220px] rounded-2xl sm:rounded-3xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
                     isBeingDragged ? 'opacity-40 scale-95 ring-2 ring-[#00E599]' : ''
                   } ${isDropTarget ? 'scale-105 ring-2 ring-[#00E599]/80 bg-[#00E599]/5' : ''} ${
                     isHandRaised ? 'ring-2 ring-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.3)]' : ''
@@ -287,9 +287,9 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                 </div>
 
                 {/* Center: Minimalist Avatar with Live Waveform Halo */}
-                <div className="flex flex-col items-center justify-center my-2 sm:my-3">
+                <div className="flex flex-col items-center justify-center my-1.5 sm:my-3">
                   <div
-                    className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-lg sm:text-xl font-bold font-mono tracking-wider transition-all duration-200 ease-out ${
+                    className={`relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center text-base sm:text-xl font-bold font-mono tracking-wider transition-all duration-200 ease-out ${
                       isDisconnected
                         ? 'bg-rose-950/40 border border-rose-500/30 text-rose-400 opacity-60 grayscale'
                         : isParticipantHost
@@ -327,40 +327,40 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                 </div>
 
                 {/* Bottom Strip: Micro Status + Integrated Action Buttons */}
-                <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] sm:text-xs">
+                <div className="flex items-center justify-between pt-1.5 sm:pt-2 border-t border-white/5 text-[9px] sm:text-xs">
                   {/* Mic Status */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     {isDisconnected ? (
-                      <span className="flex items-center gap-1 text-rose-400 font-mono text-[10px] font-semibold">
-                        <WifiOff className="w-3 h-3" />
-                        <span>LOST</span>
+                      <span className="flex items-center gap-1 text-rose-400 font-mono text-[9px] sm:text-[10px] font-semibold">
+                        <WifiOff className="w-3 h-3 shrink-0" />
+                        <span className="hidden sm:inline">LOST</span>
                       </span>
                     ) : participant.microphoneState === 'ON' ? (
-                      <span className="flex items-center gap-1 text-[#00E599] font-mono text-[10px] font-semibold">
-                        <Mic className="w-3 h-3" />
-                        <span>LIVE</span>
+                      <span className="flex items-center gap-1 text-[#00E599] font-mono text-[9px] sm:text-[10px] font-semibold">
+                        <Mic className="w-3 h-3 shrink-0" />
+                        <span className="hidden sm:inline">LIVE</span>
                       </span>
                     ) : participant.microphoneState === 'MUTED' ? (
-                      <span className="flex items-center gap-1 text-rose-400 font-mono text-[10px]">
-                        <MicOff className="w-3 h-3 text-rose-400" />
-                        <span>MUTED</span>
+                      <span className="flex items-center gap-1 text-rose-400 font-mono text-[9px] sm:text-[10px]">
+                        <MicOff className="w-3 h-3 shrink-0 text-rose-400" />
+                        <span className="hidden sm:inline">MUTED</span>
                       </span>
                     ) : participant.microphoneState === 'CONNECTING' ? (
-                      <span className="flex items-center gap-1 text-[#8A99AD] font-mono text-[10px]">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>SYNC</span>
+                      <span className="flex items-center gap-1 text-[#8A99AD] font-mono text-[9px] sm:text-[10px]">
+                        <Loader2 className="w-3 h-3 shrink-0 animate-spin" />
+                        <span className="hidden sm:inline">SYNC</span>
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1 text-[#4E586E] font-mono text-[10px]">
-                        <MicOff className="w-3 h-3" />
-                        <span>OFF</span>
+                      <span className="flex items-center gap-1 text-[#4E586E] font-mono text-[9px] sm:text-[10px]">
+                        <MicOff className="w-3 h-3 shrink-0" />
+                        <span className="hidden sm:inline">OFF</span>
                       </span>
                     )}
                   </div>
 
                   {/* Direct Action Buttons on Card */}
                   {!isLocal && !isDisconnected && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
                       {/* Host: Single Normal Mute/Unmute Button (Locked so participants cannot unmute themselves) */}
                       {isHost ? (
                         !isParticipantHost && (
@@ -376,16 +376,16 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                             }}
                             title={isHostMuted ? 'Unmute participant' : 'Mute participant'}
                             aria-label={isHostMuted ? 'Unmute participant' : 'Mute participant'}
-                            className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-90 ${
+                            className={`p-1 sm:p-1.5 rounded-md sm:rounded-lg border transition-all cursor-pointer active:scale-90 shrink-0 ${
                               isHostMuted
                                 ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
                                 : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
                             }`}
                           >
                             {isHostMuted ? (
-                              <MicOff className="w-3.5 h-3.5" />
+                              <MicOff className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             ) : (
-                              <Mic className="w-3.5 h-3.5" />
+                              <Mic className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             )}
                           </button>
                         )
@@ -394,9 +394,9 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                         isParticipantHost ? (
                           <div
                             title="Host cannot be muted"
-                            className="p-1.5 rounded-lg border border-white/5 bg-white/[0.02] text-neutral-600 cursor-not-allowed opacity-40 select-none"
+                            className="p-1 sm:p-1.5 rounded-md sm:rounded-lg border border-white/5 bg-white/[0.02] text-neutral-600 cursor-not-allowed opacity-40 select-none shrink-0"
                           >
-                            <Volume2 className="w-3.5 h-3.5" />
+                            <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                           </div>
                         ) : (
                           <button
@@ -412,16 +412,16 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                             }}
                             title={isAudioMutedLocally ? 'Unmute Audio for You' : 'Mute Audio for You'}
                             aria-label={isAudioMutedLocally ? 'Unmute Audio for You' : 'Mute Audio for You'}
-                            className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-90 ${
+                            className={`p-1 sm:p-1.5 rounded-md sm:rounded-lg border transition-all cursor-pointer active:scale-90 shrink-0 ${
                               isAudioMutedLocally
                                 ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
                                 : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
                             }`}
                           >
                             {isAudioMutedLocally ? (
-                              <VolumeX className="w-3.5 h-3.5" />
+                              <VolumeX className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             ) : (
-                              <Volume2 className="w-3.5 h-3.5" />
+                              <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             )}
                           </button>
                         )
@@ -437,9 +437,9 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                           }}
                           title="Make Host"
                           aria-label="Make Host"
-                          className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 transition-all cursor-pointer active:scale-90"
+                          className="p-1 sm:p-1.5 rounded-md sm:rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 transition-all cursor-pointer active:scale-90 shrink-0"
                         >
-                          <Crown className="w-3.5 h-3.5" />
+                          <Crown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                         </button>
                       )}
 
@@ -453,9 +453,9 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                           }}
                           title="Kick from Party"
                           aria-label="Kick from Party"
-                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-[10px] font-mono font-semibold tracking-wider transition-all cursor-pointer active:scale-90"
+                          className="flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-1 sm:py-1.5 rounded-md sm:rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-[9px] sm:text-[10px] font-mono font-semibold tracking-wider transition-all cursor-pointer active:scale-90 shrink-0"
                         >
-                          <UserX className="w-3.5 h-3.5" />
+                          <UserX className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                           <span>KICK</span>
                         </button>
                       )}

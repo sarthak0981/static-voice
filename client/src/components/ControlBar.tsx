@@ -82,7 +82,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   return (
     <nav
       aria-label="Room Controls Notch"
-      className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-1rem)] pointer-events-auto select-none px-1"
+      className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] sm:bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-1rem)] pointer-events-auto select-none px-1"
     >
       {/* Floating Chat Message Preview Popup directly above notch */}
       <div
@@ -124,7 +124,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
       </div>
 
       {/* Floating Notch Capsule */}
-      <div className="notch-hud rounded-full px-2 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1 sm:gap-2 text-white shadow-2xl">
+      <div className="notch-hud rounded-full px-1.5 sm:px-4 py-1.5 sm:py-2 flex items-center gap-1 sm:gap-2 text-white shadow-2xl overflow-x-auto no-scrollbar max-w-full">
         {/* 1. Microphone Action Button */}
         {isInParty && (
           <button
@@ -132,7 +132,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={onToggleMicrophone}
             disabled={isMicConnecting}
             aria-label={isHostMuted ? 'Muted by Host' : isMicLive ? 'Mute Microphone' : 'Unmute Microphone'}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 min-h-[40px] min-w-[40px] rounded-full font-mono text-xs font-semibold tracking-wider transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shadow-sm ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 w-9 h-9 sm:w-auto sm:px-4 sm:h-10 rounded-full font-mono text-xs font-semibold tracking-wider transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shadow-sm shrink-0 ${
               isHostMuted
                 ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
                 : isMicLive
@@ -146,33 +146,32 @@ export const ControlBar: React.FC<ControlBarProps> = ({
           >
             {isHostMuted ? (
               <>
-                <Lock className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-amber-400" />
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
                 <span className="hidden sm:inline text-amber-300">HOST MUTED</span>
-                <span className="sm:hidden text-amber-300">LOCKED</span>
               </>
             ) : isMicConnecting ? (
               <>
-                <Loader2 className="w-4 h-4 sm:w-3.5 sm:h-3.5 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 <span className="hidden sm:inline">SYNCING</span>
               </>
             ) : isMicLive ? (
               <>
-                <Mic className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <Mic className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">MIC ON</span>
               </>
             ) : isMicMuted ? (
               <>
-                <MicOff className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <MicOff className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">MUTED</span>
               </>
             ) : isMicDenied ? (
               <>
-                <AlertCircle className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <AlertCircle className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">BLOCKED</span>
               </>
             ) : (
               <>
-                <Mic className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-[#8A99AD]" />
+                <Mic className="w-3.5 h-3.5 text-[#8A99AD]" />
                 <span className="hidden sm:inline">ENABLE</span>
               </>
             )}
@@ -180,7 +179,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         )}
 
         {/* Divider */}
-        <div className="h-4 w-px bg-white/10 mx-0.5" />
+        <div className="hidden sm:block h-4 w-px bg-white/10 mx-0.5 shrink-0" />
 
         {/* 2. In-Party Text Chat Toggle */}
         {isInParty && (
@@ -189,16 +188,16 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={onToggleChat}
             aria-label="Toggle Party Chat"
             title="Party Chat"
-            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`relative w-9 h-9 sm:w-auto sm:px-3 sm:h-10 rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 shrink-0 active:scale-95 ${
               isChatOpen
                 ? 'bg-[#00E599] text-black border-[#00E599] font-bold shadow-[0_0_14px_rgba(0,229,153,0.3)]'
                 : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
             }`}
           >
-            <MessageSquare className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <MessageSquare className="w-3.5 h-3.5" />
             <span className="hidden md:inline text-xs font-mono">CHAT</span>
             {unreadChatCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-[#00E599] text-black text-[10px] font-bold font-mono animate-pulse">
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#00E599] text-black text-[9px] font-bold font-mono flex items-center justify-center shadow-md animate-pulse pointer-events-none">
                 {unreadChatCount}
               </span>
             )}
@@ -212,13 +211,13 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={onToggleRaiseHand}
             aria-label={isHandRaised ? 'Lower Hand' : 'Raise Hand'}
             title={isHandRaised ? 'Lower Hand (Hand is Raised)' : 'Raise Hand'}
-            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 ${
+            className={`relative w-9 h-9 sm:w-auto sm:px-3 sm:h-10 rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 shrink-0 active:scale-95 ${
               isHandRaised
                 ? 'bg-amber-500/15 border-amber-400/50 text-amber-300 font-semibold shadow-[0_0_14px_rgba(251,191,36,0.25)]'
                 : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
             }`}
           >
-            <Hand className={`w-4 h-4 sm:w-3.5 sm:h-3.5 transition-transform duration-300 ${isHandRaised ? 'rotate-12 scale-110 text-amber-300 fill-amber-400/20' : 'text-white/80'}`} />
+            <Hand className={`w-3.5 h-3.5 transition-transform duration-300 ${isHandRaised ? 'rotate-12 scale-110 text-amber-300 fill-amber-400/20' : 'text-white/80'}`} />
             <span className="hidden md:inline text-xs font-mono">{isHandRaised ? 'HAND UP' : 'HAND'}</span>
           </button>
         )}
@@ -230,16 +229,16 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={onToggleLoungeCollapse}
             aria-label={isLoungeCollapsed ? 'Show Lounge' : 'Hide Lounge'}
             title={isLoungeCollapsed ? 'Show Lounge' : 'Hide Lounge'}
-            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`relative w-9 h-9 sm:w-auto sm:px-3 sm:h-10 rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 shrink-0 active:scale-95 ${
               !isLoungeCollapsed
                 ? 'bg-white/20 border-[#00E599]/50 text-white shadow-sm'
                 : 'bg-white/5 border-white/10 text-[#8A99AD] hover:text-white hover:bg-white/10'
             }`}
           >
-            <Users className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+            <Users className="w-3.5 h-3.5" />
             <span className="hidden md:inline text-xs font-mono">LOUNGE</span>
             {loungeCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-[#00E599]/25 text-[#00E599] text-[10px] font-bold font-mono">
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#00E599] text-black text-[9px] font-bold font-mono flex items-center justify-center shadow-md pointer-events-none">
                 {loungeCount}
               </span>
             )}
@@ -253,22 +252,22 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             onClick={() => onToggleInvitations(!invitationsOpen)}
             title={invitationsOpen ? 'Pause invitations' : 'Reopen invitations'}
             aria-label={invitationsOpen ? 'Pause Invitations' : 'Reopen Invitations'}
-            className={`p-2 sm:px-2.5 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1 text-xs font-mono ${
+            className={`w-9 h-9 sm:w-auto sm:px-2.5 sm:h-10 rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1 text-xs font-mono shrink-0 active:scale-95 ${
               invitationsOpen
                 ? 'bg-white/5 border-white/10 text-[#8A99AD] hover:text-rose-400 hover:border-rose-500/30'
                 : 'bg-amber-500/20 border-amber-500/40 text-amber-300'
             }`}
           >
             {invitationsOpen ? (
-              <Unlock className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              <Unlock className="w-3.5 h-3.5" />
             ) : (
-              <Lock className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              <Lock className="w-3.5 h-3.5" />
             )}
           </button>
         )}
 
         {/* Divider */}
-        <div className="h-4 w-px bg-white/10 mx-0.5" />
+        <div className="hidden sm:block h-4 w-px bg-white/10 mx-0.5 shrink-0" />
 
         {/* 5. Share Room Code Button (Host Only) */}
         {isHost && (
@@ -278,19 +277,19 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               onClick={onOpenShareModal}
               aria-label="Share Room Code"
               title="Share Room Code"
-              className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 min-h-[40px] rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer"
+              className="w-9 h-9 sm:w-auto sm:px-3 sm:h-10 flex items-center justify-center gap-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer shrink-0 active:scale-95"
             >
-              <Share2 className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-[#00E599]" />
+              <Share2 className="w-3.5 h-3.5 text-[#00E599]" />
               <span className="hidden sm:inline">CODE</span>
             </button>
 
             {/* Divider */}
-            <div className="h-4 w-px bg-white/10 mx-0.5" />
+            <div className="hidden sm:block h-4 w-px bg-white/10 mx-0.5 shrink-0" />
           </>
         )}
 
         {/* 6. Leave / End Room Action */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           {isHost && partyCount <= 1 ? (
             /* Lone host in active party: LEAVE disappears completely, only END remains */
             <button
@@ -298,10 +297,11 @@ export const ControlBar: React.FC<ControlBarProps> = ({
               onClick={onPromptEndRoom || onLeaveRoom}
               aria-label="End Room"
               title="End Room"
-              className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 min-h-[40px] rounded-full bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-300 text-xs font-mono font-bold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shadow-sm shadow-rose-950/40"
+              className="flex items-center justify-center gap-1 px-2.5 sm:px-4 h-9 sm:h-10 rounded-full bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-300 text-[11px] sm:text-xs font-mono font-bold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shadow-sm shadow-rose-950/40 shrink-0"
             >
-              <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-rose-400" />
-              <span>END ROOM</span>
+              <LogOut className="w-3.5 h-3.5 text-rose-400" />
+              <span className="sm:hidden">END</span>
+              <span className="hidden sm:inline">END ROOM</span>
             </button>
           ) : (
             <>
@@ -311,7 +311,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
                   onClick={onPromptEndRoom}
                   aria-label="End Room"
                   title="End room"
-                  className="hidden sm:flex items-center gap-1 px-3 py-2 min-h-[40px] rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
+                  className="flex items-center justify-center px-2 sm:px-3 h-9 sm:h-10 rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-[11px] sm:text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shrink-0"
                 >
                   <span>END</span>
                 </button>
@@ -322,9 +322,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
                 onClick={onLeaveRoom}
                 aria-label="Leave Room"
                 title="Leave room"
-                className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 min-h-[40px] rounded-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
+                className="flex items-center justify-center gap-1 px-2.5 sm:px-3.5 h-9 sm:h-10 rounded-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-[11px] sm:text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shrink-0"
               >
-                <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <LogOut className="w-3.5 h-3.5" />
                 <span>LEAVE</span>
               </button>
             </>
