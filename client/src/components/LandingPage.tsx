@@ -217,7 +217,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] sm:w-[540px] h-[340px] sm:h-[540px] bg-static-accent/[0.05] rounded-full blur-[120px] pointer-events-none" />
 
       {/* Soft radial contrast shield to keep hero typography 100% crisp and readable */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[360px] sm:w-[540px] h-[400px] sm:h-[580px] bg-[#07080B]/65 rounded-full blur-[65px] pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[380px] sm:w-[560px] h-[420px] sm:h-[600px] bg-[#07080B]/80 rounded-full blur-[75px] pointer-events-none" />
 
       {/* Main Container */}
       <div className="relative z-10 w-full max-w-md flex flex-col items-center text-center">
