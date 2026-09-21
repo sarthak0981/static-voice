@@ -1,6 +1,7 @@
 import React from 'react';
-import { Radio, Settings } from 'lucide-react';
+import { Settings, Lock } from 'lucide-react';
 import { ConnectionStatus } from '../types/index.js';
+import { ConnectionIndicator } from './ui/ConnectionIndicator.js';
 
 interface TopBarProps {
   roomId: string;
@@ -9,94 +10,58 @@ interface TopBarProps {
   invitationsOpen: boolean;
   connectionStatus: ConnectionStatus;
   onOpenSettingsModal: () => void;
+  partyCount?: number;
+  partyCapacity?: number;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
-  roomName,
-  isHost,
+  roomId,
+  isHost: _isHost,
   invitationsOpen,
   connectionStatus,
-  onOpenSettingsModal
+  onOpenSettingsModal,
+  partyCount = 1,
+  partyCapacity = 8
 }) => {
-
-  const renderStatusBadge = () => {
-    switch (connectionStatus) {
-      case 'CONNECTED':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-static-accent/10 border border-static-accent/20 text-static-accent text-[11px] font-mono tracking-wider">
-            <span className="w-1.5 h-1.5 rounded-full bg-static-accent animate-pulse" />
-            <span className="hidden sm:inline">CONNECTED</span>
-          </span>
-        );
-      case 'RECONNECTING':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-static-warning/10 border border-static-warning/20 text-static-warning text-[11px] font-mono tracking-wider">
-            <span className="w-1.5 h-1.5 rounded-full bg-static-warning animate-ping" />
-            <span>RECONNECTING…</span>
-          </span>
-        );
-      case 'CONNECTING':
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-elevated border border-surface-border text-static-subtext text-[11px] font-mono tracking-wider">
-            <span className="w-1.5 h-1.5 rounded-full bg-static-subtext animate-pulse" />
-            <span className="hidden sm:inline">CONNECTING</span>
-          </span>
-        );
-      case 'OFFLINE':
-      default:
-        return (
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-static-danger/10 border border-static-danger/20 text-static-danger text-[11px] font-mono tracking-wider">
-            <span className="w-1.5 h-1.5 rounded-full bg-static-danger" />
-            <span>OFFLINE</span>
-          </span>
-        );
-    }
-  };
-
   return (
-    <header className="w-full pt-[env(safe-area-inset-top)] border-b border-surface-border/60 bg-surface/60 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 min-h-14">
-      {/* Brand & Connection Status */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0 pr-2 py-2">
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-surface-card border border-surface-border flex items-center justify-center">
-            <Radio className="w-3.5 h-3.5 text-static-accent" />
-          </div>
-          <span className="font-mono font-bold tracking-[0.2em] text-white text-sm sm:text-base hidden sm:inline">
-            STATIC
+    <header className="w-full pt-[max(1.25rem,env(safe-area-inset-top))] pb-3 px-6 sm:px-12 flex items-start justify-between z-20 shrink-0 select-none">
+      {/* Top Left: STATIC & Connection Status */}
+      <div className="flex flex-col items-start min-w-0">
+        <span className="font-light tracking-[0.35em] text-white text-base sm:text-lg uppercase">
+          S T A T I C
+        </span>
+        <div className="mt-1 flex items-center gap-2.5">
+          <ConnectionIndicator status={connectionStatus} />
+          {!invitationsOpen && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-300/80">
+              <Lock className="w-2.5 h-2.5" />
+              <span>Invites Paused</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Top Right: Room ID, Count & Settings */}
+      <div className="flex items-start gap-4 text-right">
+        <div className="flex flex-col items-end">
+          <span className="font-mono tracking-widest text-xs sm:text-sm text-slate-300">
+            {roomId}
+          </span>
+          <span className="mt-1 font-mono text-xs text-slate-500">
+            {partyCount} / {partyCapacity}
           </span>
         </div>
 
-        {renderStatusBadge()}
-
-        <span className="text-xs text-static-muted font-mono truncate hidden md:inline max-w-[180px]">
-          / {roomName}
-        </span>
-      </div>
-
-      {/* Notifications & System Status Center Strip */}
-      <div className="flex items-center justify-center gap-2 py-2">
-        {!invitationsOpen && (
-          <span className="px-2 sm:px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] sm:text-[11px] font-mono tracking-wide flex items-center gap-1.5 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span className="hidden sm:inline">Invitations paused</span>
-            <span className="sm:hidden">Paused</span>
-          </span>
-        )}
-      </div>
-
-      {/* Right: Clean minimal room settings */}
-      <div className="flex items-center gap-2 shrink-0 py-2">
-        {isHost && (
-          <button
-            type="button"
-            onClick={onOpenSettingsModal}
-            title="Room Settings"
-            aria-label="Room Settings"
-            className="p-2 rounded-lg bg-surface-card hover:bg-surface-hover border border-surface-border text-static-muted hover:text-white transition-colors cursor-pointer"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-        )}
+        {/* Settings button */}
+        <button
+          type="button"
+          onClick={onOpenSettingsModal}
+          title="Room Settings"
+          aria-label="Room Settings"
+          className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 transition-colors cursor-pointer mt-0.5"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
       </div>
     </header>
   );

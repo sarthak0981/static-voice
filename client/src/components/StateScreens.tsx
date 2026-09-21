@@ -1,4 +1,5 @@
-import { Clock, Lock, LogOut, ArrowLeft, Mic } from 'lucide-react';
+import React from 'react';
+import { Lock, LogOut, ArrowLeft, Mic, AlertCircle } from 'lucide-react';
 
 interface QueueScreenProps {
   queuePosition?: number;
@@ -7,35 +8,26 @@ interface QueueScreenProps {
 
 export const QueueScreen: React.FC<QueueScreenProps> = ({ queuePosition = 1, onLeaveQueue }) => {
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-background bg-static-noise text-static-text text-center">
-      <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-surface border border-surface-border shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-5 sm:mb-6">
-          <Clock className="w-7 h-7 sm:w-8 sm:h-8 animate-pulse" />
-        </div>
-
-        <span className="text-xs uppercase font-mono tracking-widest text-static-muted mb-2">
-          ROOM FULL
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-static-atmosphere bg-static-noise text-static-text text-center select-none">
+      <div className="w-full max-w-sm flex flex-col items-center">
+        <span className="text-[11px] font-mono tracking-[0.25em] text-amber-400 uppercase mb-3">
+          Room Full
         </span>
 
-        <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3 leading-snug">
-          The room is full, wait man! 😅
+        <h2 className="text-2xl sm:text-3xl font-light text-white tracking-wide mb-2">
+          Waiting for a spot
         </h2>
 
-        <div className="my-5 sm:my-6 px-4 sm:px-6 py-3.5 sm:py-4 rounded-2xl bg-surface-card border border-surface-border w-full">
-          <span className="block text-xl sm:text-2xl font-mono font-bold text-static-accent mb-1">
-            You're #{queuePosition} in line
-          </span>
-          <span className="text-xs text-static-subtext">
-            We'll let you in when a spot opens.
-          </span>
-        </div>
+        <p className="text-xs text-slate-400 font-mono mb-8">
+          You are <span className="text-white font-semibold">#{queuePosition}</span> in line. You will be admitted automatically.
+        </p>
 
         <button
           type="button"
           onClick={onLeaveQueue}
-          className="w-full py-3.5 px-5 min-h-[44px] rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-sm font-mono tracking-wider font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+          className="px-6 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono tracking-wider transition-colors flex items-center gap-2 cursor-pointer"
         >
-          <LogOut className="w-4 h-4" />
+          <LogOut className="w-3.5 h-3.5" />
           <span>LEAVE QUEUE</span>
         </button>
       </div>
@@ -49,31 +41,31 @@ interface InvitationsClosedScreenProps {
 
 export const InvitationsClosedScreen: React.FC<InvitationsClosedScreenProps> = ({ onBack }) => {
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-background bg-static-noise text-static-text text-center">
-      <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-surface border border-surface-border shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-static-warning/10 border border-static-warning/20 text-static-warning flex items-center justify-center mb-5 sm:mb-6">
-          <Lock className="w-7 h-7 sm:w-8 sm:h-8" />
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-static-atmosphere bg-static-noise text-static-text text-center select-none">
+      <div className="w-full max-w-sm flex flex-col items-center">
+        <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 mb-4">
+          <Lock className="w-5 h-5" />
         </div>
 
-        <span className="text-xs uppercase font-mono tracking-widest text-static-muted mb-2">
-          INVITATIONS CLOSED
+        <span className="text-[11px] font-mono tracking-[0.25em] text-slate-400 uppercase mb-2">
+          Invitations Paused
         </span>
 
-        <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3">
-          The invitations are closed 😊
+        <h2 className="text-2xl sm:text-3xl font-light text-white tracking-wide mb-3">
+          Room is not accepting guests
         </h2>
 
-        <p className="text-xs sm:text-sm text-static-subtext mb-6 sm:mb-8">
-          The host has temporarily paused new entries. Ask the host to reopen the room.
+        <p className="text-xs text-slate-400 leading-relaxed font-light mb-8 max-w-xs">
+          The host has temporarily paused entry to this room. You can return to the home screen.
         </p>
 
         <button
           type="button"
           onClick={onBack}
-          className="w-full py-3.5 px-5 min-h-[44px] rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-sm font-mono tracking-wider font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+          className="px-6 py-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-mono tracking-wider transition-colors flex items-center gap-2 cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4" />
-          <span>BACK TO STATIC</span>
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>RETURN TO STATIC</span>
         </button>
       </div>
     </div>
@@ -96,32 +88,27 @@ export const MessageScreen: React.FC<MessageScreenProps> = ({
   message,
   submessage,
   actionText,
-  onAction,
-  icon = 'ended'
+  onAction
 }) => {
   return (
-    <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-background bg-static-noise text-static-text text-center">
-      <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-surface border border-surface-border shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-surface-card border border-surface-border text-static-accent flex items-center justify-center mb-5 sm:mb-6 text-2xl">
-          {icon === 'ended' ? '👋' : icon === 'removed' ? '🚪' : '⚠️'}
-        </div>
-
+    <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-static-atmosphere bg-static-noise text-static-text text-center select-none">
+      <div className="w-full max-w-sm flex flex-col items-center">
         {badge && (
-          <span className="text-xs uppercase font-mono tracking-widest text-static-muted mb-2">
+          <span className="text-[11px] font-mono tracking-[0.25em] text-slate-500 uppercase mb-3">
             {badge}
           </span>
         )}
 
-        <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3">
+        <h2 className="text-2xl sm:text-3xl font-light text-white tracking-wide mb-2">
           {title}
         </h2>
 
-        <p className="text-sm sm:text-base text-white font-medium mb-2">
+        <p className="text-xs text-slate-400 font-light mb-2 max-w-xs">
           {message}
         </p>
 
         {submessage && (
-          <p className="text-xs text-static-subtext mb-6 sm:mb-8">
+          <p className="text-[11px] text-slate-500 font-mono mb-8">
             {submessage}
           </p>
         )}
@@ -129,7 +116,7 @@ export const MessageScreen: React.FC<MessageScreenProps> = ({
         <button
           type="button"
           onClick={onAction}
-          className="w-full py-3.5 px-5 mt-2 sm:mt-4 min-h-[44px] rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-sm font-mono tracking-wider font-semibold transition-colors cursor-pointer"
+          className="mt-6 px-6 py-2.5 rounded-full bg-white text-black hover:bg-white/90 font-mono text-xs font-semibold tracking-wider transition-all cursor-pointer"
         >
           {actionText}
         </button>
@@ -140,30 +127,34 @@ export const MessageScreen: React.FC<MessageScreenProps> = ({
 
 interface MicPromptBannerProps {
   onEnableMic: () => void;
-  isDenied: boolean;
+  isDenied?: boolean;
 }
 
-export const MicPromptBanner: React.FC<MicPromptBannerProps> = ({ onEnableMic, isDenied }) => {
+export const MicPromptBanner: React.FC<MicPromptBannerProps> = ({ onEnableMic, isDenied = false }) => {
   return (
-    <div className="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-surface-elevated border-b border-surface-border flex items-center justify-between gap-2.5 sm:gap-4 text-[11px] sm:text-xs font-sans animate-in slide-in-from-top duration-200">
-      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-        <div className="p-1.5 rounded-lg bg-static-accent/15 text-static-accent shrink-0">
-          <Mic className="w-4 h-4" />
-        </div>
-        <span className="text-static-text truncate sm:whitespace-normal">
+    <div className="w-full bg-surface-elevated/90 border-b border-surface-border px-4 py-2 flex items-center justify-between text-xs z-30 select-none">
+      <div className="flex items-center gap-2 text-slate-300">
+        {isDenied ? (
+          <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+        ) : (
+          <Mic className="w-3.5 h-3.5 text-static-accentLight" />
+        )}
+        <span>
           {isDenied
-            ? "Microphone access blocked. Check permissions."
-            : 'Enable microphone to talk in party.'}
+            ? 'Microphone blocked. Please grant access in your browser settings.'
+            : 'Microphone is currently uninitialized.'}
         </span>
       </div>
 
-      <button
-        type="button"
-        onClick={onEnableMic}
-        className="px-3 sm:px-3.5 py-1.5 min-h-[38px] rounded-lg bg-static-accent text-background font-mono font-semibold text-[11px] sm:text-xs hover:bg-static-accent/90 transition-colors cursor-pointer shrink-0"
-      >
-        {isDenied ? 'RETRY' : 'ENABLE MIC'}
-      </button>
+      {!isDenied && (
+        <button
+          type="button"
+          onClick={onEnableMic}
+          className="px-3 py-1 rounded bg-white text-black font-mono text-xs font-semibold hover:bg-white/90 cursor-pointer"
+        >
+          ENABLE
+        </button>
+      )}
     </div>
   );
 };
