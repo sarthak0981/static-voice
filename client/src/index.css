@@ -42,34 +42,89 @@
   background-size: 24px 24px;
 }
 
-/* Futuristic Cybernetic Ambient Grid with Subtle Breathing */
-@keyframes gridBreathe {
+/* Futuristic Cybernetic Ambient Grid with Subtle Illumination */
+@keyframes gridSoftPulse {
   0%, 100% {
-    opacity: 0.45;
-    transform: scale(1);
+    opacity: 0.50;
   }
   50% {
-    opacity: 0.90;
-    transform: scale(1.025);
+    opacity: 0.72;
   }
 }
 
 .home-grid-pattern {
   position: absolute;
-  inset: -5%;
-  width: 110%;
-  height: 110%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.09) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.09) 1px, transparent 1px),
-    radial-gradient(circle at 1px 1px, rgba(0, 229, 153, 0.4) 1.5px, transparent 1.5px);
-  background-size: 36px 36px, 36px 36px, 36px 36px;
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    radial-gradient(circle at 1px 1px, rgba(0, 229, 153, 0.3) 1.5px, transparent 1.5px);
+  background-size: 38px 38px, 38px 38px, 38px 38px;
   background-position: -1px -1px, -1px -1px, -1px -1px;
-  mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 25%, rgba(0, 0, 0, 0.45) 65%, transparent 100%);
-  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 25%, rgba(0, 0, 0, 0.45) 65%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, #000 30%, rgba(0, 0, 0, 0.35) 70%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, #000 30%, rgba(0, 0, 0, 0.35) 70%, transparent 100%);
   pointer-events: none;
-  animation: gridBreathe 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  will-change: opacity, transform;
+  animation: gridSoftPulse 10s ease-in-out infinite;
+  will-change: opacity;
+}
+
+/* Ambient Slow Ripple Wave Effect */
+@keyframes gridRippleWave {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.65;
+  }
+  60% {
+    opacity: 0.3;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+.ripple-container {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  width: 480px;
+  height: 480px;
+  max-width: 90vw;
+  max-height: 90vw;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+}
+
+.ripple-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 229, 153, 0.24);
+  background: radial-gradient(circle, transparent 65%, rgba(0, 229, 153, 0.03) 85%, rgba(0, 229, 153, 0.1) 100%);
+  box-shadow: 0 0 30px rgba(0, 229, 153, 0.12), inset 0 0 20px rgba(0, 229, 153, 0.06);
+  animation: gridRippleWave 9s cubic-bezier(0.2, 0.8, 0.4, 1) infinite;
+  will-change: transform, opacity;
+}
+
+.ripple-ring-1 {
+  animation-delay: 0s;
+}
+
+.ripple-ring-2 {
+  animation-delay: 3s;
+}
+
+.ripple-ring-3 {
+  animation-delay: 6s;
 }
 
 /* Glass panel */
