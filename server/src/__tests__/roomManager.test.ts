@@ -107,4 +107,61 @@ describe('RoomManager: Clear Lounge, Stop Invitations, Duplicate Names & Validat
     expect(reorderedParty[1].participantId).toBe(aliceId);
     expect(reorderedParty[2].participantId).toBe(hostId);
   });
+
+  it('handles host lock-mute and host-only unmute correctly', () => {
+    const { room } = rm.createRoom('socket_host', 'Party', 'Host');
+    const gP1 = rm.joinRoom(room.roomId, 'sock_p1', 'Alice');
+    rm.admitToParty(room, 'socket_host', gP1.participant!.participantId);
+
+    const alice = rm.getParticipantBySocket(room, 'sock_p1')!;
+    expect(alice.isHostMuted).toBeFalsy();
+
+    // Host mutes Alice
+    const muteRes = rm.muteParticipant(room, 'socket_host', alice.participantId);
+    expect(muteRes.success).toBe(true);
+    expect(alice.isHostMuted).toBe(true);
+    expect(alice.microphoneState).toBe('MUTED');
+
+    // Alice tries to unmute herself - blocked because isHostMuted is true
+    const micAttempt = rm.updateMicrophoneState(room, 'sock_p1', 'ON');
+    expect(micAttempt?.microphoneState).toBe('MUTED');
+    expect(alice.microphoneState).toBe('MUTED');
+
+    // Non-host attempts to unmute Alice - rejected
+    const nonHostUnmute = rm.unmuteParticipant(room, 'sock_p1', alice.participantId);
+    expect(nonHostUnmute.success).toBe(false);
+    expect(alice.isHostMuted).toBe(true);
+
+    // Host unmutes Alice
+    const hostUnmute = rm.unmuteParticipant(room, 'socket_host', alice.participantId);
+    expect(hostUnmute.success).toBe(true);
+    expect(alice.isHostMuted).toBe(false);
+
+    // Now Alice can turn her mic ON
+    const unmutedMicAttempt = rm.updateMicrophoneState(room, 'sock_p1', 'ON');
+    expect(unmutedMicAttempt).not.toBeNull();
+    expect(unmutedMicAttempt?.microphoneState).toBe('ON');
+  });
+
+  it('toggles raise hand state correctly for participants', () => {
+    const { room } = rm.createRoom('socket_host', 'Party', 'Host');
+    const gP1 = rm.joinRoom(room.roomId, 'sock_p1', 'Alice');
+    rm.admitToParty(room, 'socket_host', gP1.participant!.participantId);
+
+    const alice = rm.getParticipantBySocket(room, 'sock_p1')!;
+    expect(alice.isHandRaised).toBeFalsy();
+
+    // Alice raises hand
+    const raiseRes = rm.toggleRaiseHand(room, 'sock_p1');
+    expect(raiseRes.success).toBe(true);
+    expect(raiseRes.participant?.isHandRaised).toBe(true);
+    expect(alice.isHandRaised).toBe(true);
+
+    // Alice lowers hand
+    const lowerRes = rm.toggleRaiseHand(room, 'sock_p1');
+    expect(lowerRes.success).toBe(true);
+    expect(lowerRes.participant?.isHandRaised).toBe(false);
+    expect(alice.isHandRaised).toBe(false);
+  });
 });
+

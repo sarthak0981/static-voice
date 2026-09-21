@@ -329,9 +329,46 @@ export class RoomManager {
 
     target.microphoneState = 'MUTED';
     target.isSpeaking = false;
+    target.isHostMuted = true;
     this.touchRoom(room);
 
     return { success: true, mutedParticipant: target };
+  }
+
+  public unmuteParticipant(
+    room: InternalRoom,
+    hostSocketId: string,
+    targetParticipantId: string
+  ): { success: boolean; unmutedParticipant?: Participant; error?: string } {
+    const host = this.getParticipantBySocket(room, hostSocketId);
+    if (!host || host.role !== 'HOST') {
+      return { success: false, error: 'Only the host can unmute participants.' };
+    }
+
+    const target = room.participants.get(targetParticipantId);
+    if (!target || target.state !== 'PARTY') {
+      return { success: false, error: 'Participant is not in the party.' };
+    }
+
+    target.isHostMuted = false;
+    this.touchRoom(room);
+
+    return { success: true, unmutedParticipant: target };
+  }
+
+  public toggleRaiseHand(
+    room: InternalRoom,
+    socketId: string
+  ): { success: boolean; participant?: Participant; error?: string } {
+    const participant = this.getParticipantBySocket(room, socketId);
+    if (!participant || participant.state !== 'PARTY') {
+      return { success: false, error: 'Only party members can raise hand.' };
+    }
+
+    participant.isHandRaised = !participant.isHandRaised;
+    this.touchRoom(room);
+
+    return { success: true, participant };
   }
 
   public transferHost(
@@ -692,6 +729,9 @@ export class RoomManager {
   ): Participant | undefined {
     const participant = this.getParticipantBySocket(room, socketId);
     if (participant) {
+      if (participant.isHostMuted && micState === 'ON') {
+        return participant; // Block unmuting when locked by host
+      }
       participant.microphoneState = micState;
       if (micState === 'MUTED' || micState === 'OFF' || micState === 'DENIED') {
         participant.isSpeaking = false;

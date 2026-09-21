@@ -11,7 +11,8 @@ import {
   Crown,
   X,
   Lock,
-  Unlock
+  Unlock,
+  Hand
 } from 'lucide-react';
 import { MicrophoneState, ChatMessage } from '../types/index.js';
 
@@ -19,6 +20,10 @@ interface ControlBarProps {
   microphoneState: MicrophoneState;
   isInParty: boolean;
   isHost: boolean;
+  partyCount?: number;
+  isHostMuted?: boolean;
+  isHandRaised?: boolean;
+  onToggleRaiseHand?: () => void;
   loungeCount: number;
   isLoungeCollapsed: boolean;
   onToggleLoungeCollapse: () => void;
@@ -38,6 +43,10 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   microphoneState,
   isInParty,
   isHost,
+  partyCount = 0,
+  isHostMuted = false,
+  isHandRaised = false,
+  onToggleRaiseHand,
   loungeCount,
   isLoungeCollapsed,
   onToggleLoungeCollapse,
@@ -122,9 +131,11 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             type="button"
             onClick={onToggleMicrophone}
             disabled={isMicConnecting}
-            aria-label={isMicLive ? 'Mute Microphone' : 'Unmute Microphone'}
+            aria-label={isHostMuted ? 'Muted by Host' : isMicLive ? 'Mute Microphone' : 'Unmute Microphone'}
             className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 min-h-[40px] min-w-[40px] rounded-full font-mono text-xs font-semibold tracking-wider transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shadow-sm ${
-              isMicLive
+              isHostMuted
+                ? 'bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                : isMicLive
                 ? 'bg-[#00E599] text-black hover:bg-[#00E599]/90 font-bold shadow-[0_0_18px_rgba(0,229,153,0.35)]'
                 : isMicMuted
                 ? 'bg-rose-500/15 border border-rose-500/35 text-rose-400 hover:bg-rose-500/25'
@@ -133,7 +144,13 @@ export const ControlBar: React.FC<ControlBarProps> = ({
                 : 'bg-white/5 text-white/80 border border-white/10 hover:bg-white/10'
             }`}
           >
-            {isMicConnecting ? (
+            {isHostMuted ? (
+              <>
+                <Lock className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-amber-400" />
+                <span className="hidden sm:inline text-amber-300">HOST MUTED</span>
+                <span className="sm:hidden text-amber-300">LOCKED</span>
+              </>
+            ) : isMicConnecting ? (
               <>
                 <Loader2 className="w-4 h-4 sm:w-3.5 sm:h-3.5 animate-spin" />
                 <span className="hidden sm:inline">SYNCING</span>
@@ -185,6 +202,24 @@ export const ControlBar: React.FC<ControlBarProps> = ({
                 {unreadChatCount}
               </span>
             )}
+          </button>
+        )}
+
+        {/* 2b. In-Party Raise Hand Button */}
+        {isInParty && (
+          <button
+            type="button"
+            onClick={onToggleRaiseHand}
+            aria-label={isHandRaised ? 'Lower Hand' : 'Raise Hand'}
+            title={isHandRaised ? 'Lower Hand (Hand is Raised)' : 'Raise Hand'}
+            className={`relative p-2 sm:px-3 sm:py-2 min-h-[40px] min-w-[40px] rounded-full border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 ${
+              isHandRaised
+                ? 'bg-amber-400 text-black border-amber-400 font-bold shadow-[0_0_16px_rgba(251,191,36,0.45)] animate-pulse'
+                : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
+            }`}
+          >
+            <Hand className={`w-4 h-4 sm:w-3.5 sm:h-3.5 transition-transform duration-300 ${isHandRaised ? 'rotate-12 scale-110' : ''}`} />
+            <span className="hidden md:inline text-xs font-mono">{isHandRaised ? 'HAND UP' : 'HAND'}</span>
           </button>
         )}
 
@@ -256,28 +291,44 @@ export const ControlBar: React.FC<ControlBarProps> = ({
 
         {/* 6. Leave / End Room Action */}
         <div className="flex items-center gap-1">
-          {isHost && onPromptEndRoom && (
+          {isHost && partyCount <= 1 ? (
+            /* Lone host in active party: LEAVE disappears completely, only END remains */
             <button
               type="button"
-              onClick={onPromptEndRoom}
+              onClick={onPromptEndRoom || onLeaveRoom}
               aria-label="End Room"
-              title="End room"
-              className="hidden sm:flex items-center gap-1 px-3 py-2 min-h-[40px] rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
+              title="End Room"
+              className="flex items-center justify-center gap-1.5 px-3 sm:px-4 py-2 min-h-[40px] rounded-full bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/50 text-rose-300 text-xs font-mono font-bold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95 shadow-sm shadow-rose-950/40"
             >
-              <span>END</span>
+              <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-rose-400" />
+              <span>END ROOM</span>
             </button>
-          )}
+          ) : (
+            <>
+              {isHost && onPromptEndRoom && (
+                <button
+                  type="button"
+                  onClick={onPromptEndRoom}
+                  aria-label="End Room"
+                  title="End room"
+                  className="hidden sm:flex items-center gap-1 px-3 py-2 min-h-[40px] rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
+                >
+                  <span>END</span>
+                </button>
+              )}
 
-          <button
-            type="button"
-            onClick={onLeaveRoom}
-            aria-label="Leave Room"
-            title="Leave room"
-            className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 min-h-[40px] rounded-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
-          >
-            <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
-            <span>LEAVE</span>
-          </button>
+              <button
+                type="button"
+                onClick={onLeaveRoom}
+                aria-label="Leave Room"
+                title="Leave room"
+                className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 py-2 min-h-[40px] rounded-full bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-mono font-semibold transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer active:scale-95"
+              >
+                <LogOut className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <span>LEAVE</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
     </nav>

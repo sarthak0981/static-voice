@@ -16,6 +16,8 @@ export interface Participant {
   joinedAt: number;
   partyJoinedAt?: number;
   queuePosition?: number;
+  isHandRaised?: boolean;
+  isHostMuted?: boolean;
 }
 
 export interface RoomSummary {
@@ -108,6 +110,16 @@ export interface ClientToServerEvents {
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 
+  'unmute-participant': (
+    payload: { roomId?: string; targetParticipantId: string },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
+
+  'toggle-raise-hand': (
+    payload?: { roomId?: string },
+    callback?: (response: { success: boolean; isHandRaised?: boolean; error?: string }) => void
+  ) => void;
+
   'transfer-host': (
     payload: { roomId?: string; targetParticipantId: string },
     callback: (response: { success: boolean; error?: string }) => void
@@ -168,6 +180,8 @@ export interface ServerToClientEvents {
   'lounge-cleared': (payload: { reason: string }) => void;
   'removed-from-party': (payload: { reason: string }) => void;
   'force-muted': (payload: { reason: string }) => void;
+  'unmuted-by-host': (payload: { reason?: string }) => void;
+  'hand-raised': (payload: { participantId: string; displayName: string; isHandRaised: boolean }) => void;
   'room-ended': (payload: { reason: string }) => void;
   'host-changed': (payload: { newHostId: string; message: string }) => void;
   'host-disconnect-warning': (payload: { secondsRemaining: number; message: string }) => void;

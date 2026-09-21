@@ -359,6 +359,49 @@ io.on('connection', (socket) => {
     broadcastRoomState(room.roomId);
   });
 
+  // 6b. Host Master Control: Unmute participant
+  socket.on('unmute-participant', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
+
+    const result = roomManager.unmuteParticipant(room, socket.id, targetParticipantId);
+    if (!result.success || !result.unmutedParticipant) {
+      return cb({ success: false, error: result.error });
+    }
+
+    io.to(result.unmutedParticipant.socketId).emit('unmuted-by-host', {
+      reason: 'The host unmuted your microphone. You can now speak.'
+    });
+
+    cb({ success: true });
+    broadcastRoomState(room.roomId);
+  });
+
+  // 6c. Party Participant: Toggle Raise Hand
+  socket.on('toggle-raise-hand', (payloadOrCallback: any, callback?: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof payloadOrCallback === 'function' ? payloadOrCallback : () => {};
+    const explicitRoomId = typeof payloadOrCallback === 'object' ? payloadOrCallback?.roomId : undefined;
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
+
+    const result = roomManager.toggleRaiseHand(room, socket.id);
+    if (!result.success || !result.participant) {
+      return cb({ success: false, error: result.error });
+    }
+
+    io.to(room.roomId).emit('hand-raised', {
+      participantId: result.participant.participantId,
+      displayName: result.participant.displayName,
+      isHandRaised: !!result.participant.isHandRaised
+    });
+
+    cb({ success: true, isHandRaised: !!result.participant.isHandRaised });
+    broadcastRoomState(room.roomId);
+  });
+
   // 7. Host Master Control: Transfer host role
   socket.on('transfer-host', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};

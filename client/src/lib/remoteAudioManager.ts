@@ -16,6 +16,7 @@ export interface RemoteAudioCallbacks {
 export class RemoteAudioManager {
   private audioElements: Map<string, HTMLAudioElement> = new Map();
   private peerVolumes: Map<string, number> = new Map(); // 0.0 to 1.0
+  private locallyMutedPeers: Set<string> = new Set();
   private masterVolume: number = 1.0;
   private isAutoplayBlocked: boolean = false;
   private callbacks: RemoteAudioCallbacks;
@@ -167,7 +168,30 @@ export class RemoteAudioManager {
     return this.masterVolume;
   }
 
+  public setPeerMuted(participantId: string, muted: boolean): void {
+    if (muted) {
+      this.locallyMutedPeers.add(participantId);
+    } else {
+      this.locallyMutedPeers.delete(participantId);
+    }
+
+    const audio = this.audioElements.get(participantId);
+    if (audio) {
+      this.applyVolume(participantId, audio);
+    }
+  }
+
+  public isPeerMuted(participantId: string): boolean {
+    return this.locallyMutedPeers.has(participantId);
+  }
+
   private applyVolume(participantId: string, audio: HTMLAudioElement) {
+    if (this.locallyMutedPeers.has(participantId)) {
+      audio.muted = true;
+      audio.volume = 0;
+      return;
+    }
+    audio.muted = false;
     const userVol = this.peerVolumes.get(participantId) ?? 1.0;
     const finalVol = Math.max(0, Math.min(1, userVol * this.masterVolume));
     audio.volume = finalVol;

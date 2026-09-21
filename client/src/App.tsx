@@ -135,6 +135,7 @@ export function App() {
   const [notificationQueue, setNotificationQueue] = useState<NotificationItem[]>([]);
   const recentNotificationsRef = useRef<Map<string, number>>(new Map());
   const recentParticipantEventsRef = useRef<Map<string, number>>(new Map());
+  const [localMutedPeers, setLocalMutedPeers] = useState<Set<string>>(new Set());
 
   const queueNotification = useCallback((item: Omit<NotificationItem, 'id'>) => {
     const now = Date.now();
@@ -347,6 +348,24 @@ export function App() {
         webrtcEngineRef.current.forceMute();
       }
       showToast(payload.reason || 'The host muted your microphone.');
+    };
+
+    const handleUnmutedByHost = (payload: { reason?: string }) => {
+      showToast(payload.reason || 'The host unmuted your microphone. You can now speak.');
+    };
+
+    const handleHandRaised = (payload: { participantId: string; displayName: string; isHandRaised: boolean }) => {
+      if (payload.participantId !== roomStateRef.current?.currentUser.participantId) {
+        if (payload.isHandRaised) {
+          notificationSound.playJoinTing();
+          queueNotification({
+            message: `${payload.displayName || 'Someone'} raised their hand ✋`,
+            type: 'action',
+            icon: 'join',
+            durationMs: 4000
+          });
+        }
+      }
     };
 
     const handleKicked = (payload: { reason: string }) => {
@@ -643,6 +662,8 @@ export function App() {
     socket.on('room-state-updated', handleRoomStateUpdated);
     socket.on('participant-admitted', handleParticipantAdmitted);
     socket.on('force-muted', handleForceMuted);
+    socket.on('unmuted-by-host', handleUnmutedByHost);
+    socket.on('hand-raised', handleHandRaised);
     socket.on('kicked', handleKicked);
     socket.on('lounge-cleared', handleLoungeCleared);
     socket.on('removed-from-party', handleRemovedFromParty);
@@ -662,6 +683,8 @@ export function App() {
       socket.off('room-state-updated', handleRoomStateUpdated);
       socket.off('participant-admitted', handleParticipantAdmitted);
       socket.off('force-muted', handleForceMuted);
+      socket.off('unmuted-by-host', handleUnmutedByHost);
+      socket.off('hand-raised', handleHandRaised);
       socket.off('kicked', handleKicked);
       socket.off('lounge-cleared', handleLoungeCleared);
       socket.off('removed-from-party', handleRemovedFromParty);
@@ -850,6 +873,62 @@ export function App() {
     });
   };
 
+  // Host Action: Mute Participant (Locked by Host)
+  const handleHostMuteParticipant = (targetParticipantId: string) => {
+    const socket = getSocket();
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('mute-participant', { roomId, targetParticipantId }, (res: any) => {
+      if (!res.success) {
+        showToast(res.error || 'Failed to mute participant.');
+      }
+    });
+  };
+
+  // Host Action: Unmute Participant (Unlock by Host)
+  const handleHostUnmuteParticipant = (targetParticipantId: string) => {
+    const socket = getSocket();
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('unmute-participant', { roomId, targetParticipantId }, (res: any) => {
+      if (!res.success) {
+        showToast(res.error || 'Failed to unmute participant.');
+      }
+    });
+  };
+
+  // Participant Action: Toggle Raise Hand
+  const handleToggleRaiseHand = () => {
+    const socket = getSocket();
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('toggle-raise-hand', { roomId }, (res: any) => {
+      if (!res.success) {
+        showToast(res.error || 'Failed to update hand status.');
+      }
+    });
+  };
+
+  // Participant Action: Toggle Local Mute (Host is Protected)
+  const handleToggleLocalMute = (participantId: string) => {
+    const target = roomStateRef.current?.party.find((p) => p.participantId === participantId);
+    if (target?.role === 'HOST' && roomStateRef.current?.currentUser.role !== 'HOST') {
+      showToast('You cannot mute the host.');
+      return;
+    }
+
+    setLocalMutedPeers((prev) => {
+      const next = new Set(prev);
+      const isCurrentlyMuted = next.has(participantId);
+      if (isCurrentlyMuted) {
+        next.delete(participantId);
+        webrtcEngineRef.current?.setPeerMuted(participantId, false);
+        showToast(`Unmuted ${target?.displayName || 'participant'} for you.`);
+      } else {
+        next.add(participantId);
+        webrtcEngineRef.current?.setPeerMuted(participantId, true);
+        showToast(`Muted ${target?.displayName || 'participant'} for you only.`);
+      }
+      return next;
+    });
+  };
 
   // Host Action: Toggle Invitations (Stop / Reopen)
   const handleToggleInvitations = (open: boolean) => {
@@ -888,6 +967,7 @@ export function App() {
         setUnreadChatCount(0);
         setNotificationQueue([]);
         setDisconnectedPeerIds(new Set());
+        setLocalMutedPeers(new Set());
 
         window.history.pushState({}, '', '/');
         setRoomState(null);
@@ -903,6 +983,12 @@ export function App() {
   const handleLeaveClick = () => {
     const currentUser = roomState?.currentUser;
     const party = roomState?.party || [];
+
+    // Lone host in active party: prompt to end room directly!
+    if (currentUser?.role === 'HOST' && party.length <= 1) {
+      setIsEndRoomModalOpen(true);
+      return;
+    }
 
     if (currentUser?.role === 'HOST' && party.length > 1) {
       setIsHostTransferModalOpen(true);
@@ -983,6 +1069,10 @@ export function App() {
 
   // Toggle Microphone
   const handleToggleMicrophone = async () => {
+    if (roomStateRef.current?.currentUser.isHostMuted) {
+      showToast('You were muted by the host. Waiting for host to unmute.');
+      return;
+    }
     if (!webrtcEngineRef.current) return;
     webrtcEngineRef.current.unlockAudio();
     if (microphoneState === 'OFF' || microphoneState === 'DENIED') {
@@ -1011,6 +1101,7 @@ export function App() {
     setUnreadChatCount(0);
     setNotificationQueue([]);
     setDisconnectedPeerIds(new Set());
+    setLocalMutedPeers(new Set());
 
     window.history.pushState({}, '', '/');
     setRoomState(null);
@@ -1146,6 +1237,10 @@ export function App() {
           onVolumeChange={handleVolumeChange}
           onKickParticipant={handleKickParticipant}
           onTransferHost={handleTransferHost}
+          onMuteParticipant={handleHostMuteParticipant}
+          onUnmuteParticipant={handleHostUnmuteParticipant}
+          localMutedPeers={localMutedPeers}
+          onToggleLocalMute={handleToggleLocalMute}
           onOpenShareModal={() => setIsShareModalOpen(true)}
           hostGraceSeconds={hostGraceSeconds}
           onReorderParty={handleReorderParty}
@@ -1182,6 +1277,10 @@ export function App() {
         microphoneState={microphoneState}
         isInParty={isInParty}
         isHost={isHost}
+        partyCount={roomState.party.length}
+        isHostMuted={currentUser.isHostMuted}
+        isHandRaised={currentUser.isHandRaised}
+        onToggleRaiseHand={handleToggleRaiseHand}
         loungeCount={isHost ? roomState.lounge.length : 0}
         isLoungeCollapsed={!isLoungeVisible}
         onToggleLoungeCollapse={handleToggleLounge}
@@ -1261,10 +1360,10 @@ export function App() {
       <button
         type="button"
         onClick={() => setIsDiagnosticsOpen(true)}
-        title="STATIC v1.3.5 • WebRTC Diagnostics HUD"
+        title="STATIC v1.3.6 • WebRTC Diagnostics HUD"
         className="fixed bottom-1.5 right-3 text-[10px] text-white/20 hover:text-white/50 font-mono tracking-widest select-none z-30 transition-colors cursor-pointer"
       >
-        v1.3.5
+        v1.3.6
       </button>
     </div>
   );

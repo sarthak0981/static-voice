@@ -157,6 +157,21 @@ export class WebRTCVoiceEngine {
   }
 
   /**
+   * Locally mutes or unmutes a specific remote participant's audio
+   */
+  public setPeerMuted(id: string, muted: boolean): void {
+    const peer = this.peersBySocketId.get(id) || this.peersByParticipantId.get(id);
+    const participantId = peer?.remoteParticipantId || id;
+    this.remoteAudioManager.setPeerMuted(participantId, muted);
+  }
+
+  public isPeerMuted(id: string): boolean {
+    const peer = this.peersBySocketId.get(id) || this.peersByParticipantId.get(id);
+    const participantId = peer?.remoteParticipantId || id;
+    return this.remoteAudioManager.isPeerMuted(participantId);
+  }
+
+  /**
    * Sets master output volume scaling across all remote participants (0.0 to 1.0)
    */
   public setMasterVolume(volume: number): void {

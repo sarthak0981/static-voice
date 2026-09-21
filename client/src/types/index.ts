@@ -18,6 +18,8 @@ export interface Participant {
   joinedAt: number;
   partyJoinedAt?: number;
   queuePosition?: number;
+  isHandRaised?: boolean;
+  isHostMuted?: boolean;
 }
 
 export interface RoomSummary {
