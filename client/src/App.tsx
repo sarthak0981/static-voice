@@ -1153,10 +1153,10 @@ export function App() {
       <button
         type="button"
         onClick={() => setIsDiagnosticsOpen(true)}
-        title="STATIC v1.3.2 • WebRTC Diagnostics HUD"
+        title="STATIC v1.3.3 • WebRTC Diagnostics HUD"
         className="fixed bottom-1.5 right-3 text-[10px] text-white/20 hover:text-white/50 font-mono tracking-widest select-none z-30 transition-colors cursor-pointer"
       >
-        v1.3.2
+        v1.3.3
       </button>
     </div>
   );
