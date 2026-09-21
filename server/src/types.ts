@@ -173,10 +173,10 @@ export interface ServerToClientEvents {
   'participant-joined-party': (participant: Participant | { participantId: string; displayName?: string }) => void;
   'participant-left-party': (payload: { participantId: string; displayName?: string } | string) => void;
   'participant-disconnected': (payload: { participantId: string; displayName?: string }) => void;
-  'participant-kicked': (payload: { participantId: string; displayName?: string }) => void;
+  'participant-kicked': (payload: { participantId: string; displayName?: string; fromLounge?: boolean }) => void;
   'participant-admitted': (participant: Participant) => void;
   'queue-position-updated': (payload: { position: number }) => void;
-  'kicked': (payload: { reason: string }) => void;
+  'kicked': (payload: { reason: string; fromLounge?: boolean }) => void;
   'lounge-cleared': (payload: { reason: string }) => void;
   'removed-from-party': (payload: { reason: string }) => void;
   'force-muted': (payload: { reason: string }) => void;

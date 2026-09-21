@@ -163,5 +163,23 @@ describe('RoomManager: Clear Lounge, Stop Invitations, Duplicate Names & Validat
     expect(lowerRes.participant?.isHandRaised).toBe(false);
     expect(alice.isHandRaised).toBe(false);
   });
+
+  it('differentiates lounge vs party when kicking participants', () => {
+    const { room } = rm.createRoom('socket_host', 'Party', 'Host');
+    const gParty = rm.joinRoom(room.roomId, 'sock_party', 'PartyUser');
+    rm.admitToParty(room, 'socket_host', gParty.participant!.participantId);
+
+    const gLounge = rm.joinRoom(room.roomId, 'sock_lounge', 'LoungeUser');
+
+    // Kick lounge user
+    const kickLoungeRes = rm.kickParticipant(room, 'socket_host', gLounge.participant!.participantId);
+    expect(kickLoungeRes.success).toBe(true);
+    expect(kickLoungeRes.wasInLounge).toBe(true);
+
+    // Kick party user
+    const kickPartyRes = rm.kickParticipant(room, 'socket_host', gParty.participant!.participantId);
+    expect(kickPartyRes.success).toBe(true);
+    expect(kickPartyRes.wasInLounge).toBe(false);
+  });
 });
 

@@ -435,13 +435,19 @@ io.on('connection', (socket) => {
       return cb({ success: false, error: result.error });
     }
 
+    const isLounge = !!result.wasInLounge;
+
     io.to(result.kickedParticipant.socketId).emit('kicked', {
-      reason: 'You were removed from the room.'
+      fromLounge: isLounge,
+      reason: isLounge
+        ? 'The host has denied your request to join the party.'
+        : 'You were removed from the room by the host.'
     });
 
     socket.to(room.roomId).emit('participant-kicked', {
       participantId: result.kickedParticipant.participantId,
-      displayName: result.kickedParticipant.displayName
+      displayName: result.kickedParticipant.displayName,
+      fromLounge: isLounge
     });
 
     cb({ success: true });

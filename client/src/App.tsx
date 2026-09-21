@@ -50,7 +50,15 @@ export function App() {
   const [screenState, setScreenState] = useState<
     'HOME' | 'ROOM' | 'QUEUE' | 'INVITATIONS_CLOSED' | 'ROOM_ENDED' | 'REMOVED'
   >('HOME');
-  const [screenMessage, setScreenMessage] = useState<{ title: string; message: string; submessage?: string }>({
+  const [screenMessage, setScreenMessage] = useState<{
+    title: string;
+    message: string;
+    submessage?: string;
+    badge?: string;
+    actionText?: string;
+    icon?: 'ended' | 'removed' | 'error' | 'clock';
+    clockInText?: string;
+  }>({
     title: '',
     message: ''
   });
@@ -368,7 +376,7 @@ export function App() {
       }
     };
 
-    const handleKicked = (payload: { reason: string }) => {
+    const handleKicked = (payload: { reason: string; fromLounge?: boolean }) => {
       const activeRoomId = roomStateRef.current?.room.roomId;
       if (activeRoomId) {
         clearStoredSessionToken(activeRoomId);
@@ -385,9 +393,23 @@ export function App() {
       setUnreadChatCount(0);
       setNotificationQueue([]);
       setDisconnectedPeerIds(new Set());
+
+      const isLounge = payload.fromLounge ?? (
+        roomStateRef.current?.currentUser.state === 'LOUNGE' || 
+        roomStateRef.current?.currentUser.state === 'QUEUED'
+      );
+
       setScreenMessage({
-        title: 'Removed from Room',
-        message: payload.reason || 'You were disconnected by the host.'
+        title: isLounge ? 'Request Denied' : 'Removed from Room',
+        badge: isLounge ? 'LOUNGE' : 'ROOM',
+        message: isLounge
+          ? (payload.reason || 'The host has denied your request to join the party.')
+          : (payload.reason || 'You were removed from the room by the host.'),
+        submessage: isLounge
+          ? 'You were removed from the waiting lounge.'
+          : 'You are no longer in this voice party.',
+        actionText: 'Return Home',
+        icon: isLounge ? 'error' : 'removed'
       });
       setScreenState('REMOVED');
       setRoomState(null);
@@ -411,8 +433,12 @@ export function App() {
       setNotificationQueue([]);
       setDisconnectedPeerIds(new Set());
       setScreenMessage({
-        title: 'Lounge Closed',
-        message: payload.reason || 'The waiting area was closed by the host.'
+        title: 'Request Denied',
+        badge: 'LOUNGE',
+        message: payload.reason || 'The waiting area was closed by the host.',
+        submessage: 'You were removed from the waiting lounge.',
+        actionText: 'Return Home',
+        icon: 'error'
       });
       setScreenState('REMOVED');
       setRoomState(null);
@@ -436,8 +462,12 @@ export function App() {
       setNotificationQueue([]);
       setDisconnectedPeerIds(new Set());
       setScreenMessage({
-        title: 'Moved from Party',
-        message: payload.reason || 'The host moved you from the party.'
+        title: 'Removed from Room',
+        badge: 'ROOM',
+        message: payload.reason || 'The host removed you from the party.',
+        submessage: 'You are no longer in this voice party.',
+        actionText: 'Return Home',
+        icon: 'removed'
       });
       setScreenState('REMOVED');
       setRoomState(null);
@@ -445,6 +475,21 @@ export function App() {
 
     const handleRoomEnded = (payload: { reason: string }) => {
       const activeRoomId = roomStateRef.current?.room.roomId;
+      const currentUser = roomStateRef.current?.currentUser;
+      const room = roomStateRef.current?.room;
+      const isHostUser = currentUser?.role === 'HOST';
+
+      let clockInText: string | undefined;
+      if (isHostUser) {
+        const joinedAt = currentUser?.joinedAt || room?.createdAt || Date.now();
+        const durationMs = Math.max(0, Date.now() - joinedAt);
+        const totalSeconds = Math.floor(durationMs / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        clockInText = `You clocked in for ${hours}h ${minutes}m ${seconds}s`;
+      }
+
       if (activeRoomId) {
         clearStoredSessionToken(activeRoomId);
       }
@@ -462,7 +507,12 @@ export function App() {
       setDisconnectedPeerIds(new Set());
       setScreenMessage({
         title: 'Room Ended',
-        message: payload.reason || 'This voice session has ended.'
+        badge: isHostUser ? 'HOST SUMMARY' : 'SESSION ENDED',
+        message: isHostUser && clockInText ? clockInText : (payload.reason || 'This voice session has ended.'),
+        submessage: isHostUser ? 'This session has ended and the room has been destroyed.' : undefined,
+        actionText: isHostUser ? 'OK' : 'Return Home',
+        icon: isHostUser ? 'clock' : 'ended',
+        clockInText
       });
       setScreenState('ROOM_ENDED');
       setRoomState(null);
@@ -626,7 +676,7 @@ export function App() {
       });
     };
 
-    const handleParticipantKicked = (payload: { participantId: string; displayName?: string }) => {
+    const handleParticipantKicked = (payload: { participantId: string; displayName?: string; fromLounge?: boolean }) => {
       const now = Date.now();
       const lastDeparture = recentParticipantEventsRef.current.get(`leave_${payload.participantId}`);
       if (lastDeparture && now - lastDeparture < 4000) return;
@@ -635,7 +685,9 @@ export function App() {
       const name = payload.displayName || 'Someone';
       notificationSound.playLeaveTing();
       queueNotification({
-        message: `${name} was removed from the party`,
+        message: payload.fromLounge
+          ? `${name}'s request was denied`
+          : `${name} was removed from the room`,
         icon: 'leave',
         type: 'leave'
       });
@@ -946,6 +998,16 @@ export function App() {
     setIsLoading(true);
     const socket = getSocket();
     const activeRoomId = roomStateRef.current?.room.roomId;
+    const currentUser = roomStateRef.current?.currentUser;
+    const room = roomStateRef.current?.room;
+    const joinedAt = currentUser?.joinedAt || room?.createdAt || Date.now();
+    const durationMs = Math.max(0, Date.now() - joinedAt);
+    const totalSeconds = Math.floor(durationMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const clockInDuration = `${hours}h ${minutes}m ${seconds}s`;
+
     socket.emit('end-room', { roomId: activeRoomId }, (res: any) => {
       setIsLoading(false);
       setIsEndRoomModalOpen(false);
@@ -971,8 +1033,18 @@ export function App() {
 
         window.history.pushState({}, '', '/');
         setRoomState(null);
-        setScreenState('HOME');
-        showToast('Room ended.');
+
+        // Host sees clock-in summary screen with an OK button!
+        setScreenMessage({
+          title: 'Room Ended',
+          badge: 'HOST SUMMARY',
+          message: `You clocked in for ${clockInDuration}`,
+          submessage: 'This session has ended and the room has been destroyed.',
+          actionText: 'OK',
+          icon: 'clock',
+          clockInText: `You clocked in for ${clockInDuration}`
+        });
+        setScreenState('ROOM_ENDED');
       } else {
         showToast(res.error || 'Failed to end room.');
       }
@@ -1133,12 +1205,13 @@ export function App() {
       <div className="ui-fade-transition w-full h-full">
         <MessageScreen
           title={screenMessage.title}
-          badge="SESSION ENDED"
+          badge={screenMessage.badge || 'SESSION ENDED'}
           message={screenMessage.message}
           submessage={screenMessage.submessage}
-          actionText="Return Home"
+          actionText={screenMessage.actionText || 'Return Home'}
           onAction={handleReturnHome}
-          icon="ended"
+          icon={screenMessage.icon || 'ended'}
+          clockInText={screenMessage.clockInText}
         />
       </div>
     );
@@ -1149,11 +1222,12 @@ export function App() {
       <div className="ui-fade-transition w-full h-full">
         <MessageScreen
           title={screenMessage.title}
-          badge="UPDATE"
+          badge={screenMessage.badge || 'UPDATE'}
           message={screenMessage.message}
-          actionText="Return Home"
+          submessage={screenMessage.submessage}
+          actionText={screenMessage.actionText || 'Return Home'}
           onAction={handleReturnHome}
-          icon="removed"
+          icon={screenMessage.icon || 'removed'}
         />
       </div>
     );

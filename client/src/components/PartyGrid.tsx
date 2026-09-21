@@ -443,7 +443,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                         </button>
                       )}
 
-                      {/* 3. Host Action: Kick */}
+                      {/* 3. Host Action: Kick (Only button of the three with proper text and icon) */}
                       {isHost && !isParticipantHost && (
                         <button
                           type="button"
@@ -453,9 +453,10 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                           }}
                           title="Kick from Party"
                           aria-label="Kick from Party"
-                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 transition-all cursor-pointer active:scale-90"
+                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-[10px] font-mono font-semibold tracking-wider transition-all cursor-pointer active:scale-90"
                         >
                           <UserX className="w-3.5 h-3.5" />
+                          <span>KICK</span>
                         </button>
                       )}
                     </div>

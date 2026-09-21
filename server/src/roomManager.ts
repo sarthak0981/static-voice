@@ -405,6 +405,7 @@ export class RoomManager {
   ): {
     success: boolean;
     kickedParticipant?: Participant;
+    wasInLounge?: boolean;
     queuePromotedParticipant?: Participant;
     error?: string;
   } {
@@ -438,7 +439,12 @@ export class RoomManager {
     }
 
     this.touchRoom(room);
-    return { success: true, kickedParticipant: target, queuePromotedParticipant: queuePromoted };
+    return {
+      success: true,
+      kickedParticipant: target,
+      wasInLounge: wasInLounge || wasInQueue,
+      queuePromotedParticipant: queuePromoted
+    };
   }
 
   public removeFromParty(

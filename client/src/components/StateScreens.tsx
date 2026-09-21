@@ -87,7 +87,8 @@ interface MessageScreenProps {
   submessage?: string;
   actionText: string;
   onAction: () => void;
-  icon?: 'ended' | 'removed' | 'error';
+  icon?: 'ended' | 'removed' | 'error' | 'clock';
+  clockInText?: string;
 }
 
 export const MessageScreen: React.FC<MessageScreenProps> = ({
@@ -97,13 +98,20 @@ export const MessageScreen: React.FC<MessageScreenProps> = ({
   submessage,
   actionText,
   onAction,
-  icon = 'ended'
+  icon = 'ended',
+  clockInText
 }) => {
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 sm:p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] bg-background bg-static-noise text-static-text text-center">
       <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-surface border border-surface-border shadow-2xl flex flex-col items-center animate-in zoom-in-95 duration-200">
-        <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-surface-card border border-surface-border flex items-center justify-center mb-5 sm:mb-6">
-          {icon === 'ended' ? (
+        <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl border flex items-center justify-center mb-5 sm:mb-6 ${
+          icon === 'clock'
+            ? 'bg-amber-500/10 border-amber-500/25 text-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.15)]'
+            : 'bg-surface-card border-surface-border'
+        }`}>
+          {icon === 'clock' ? (
+            <Clock className="w-7 h-7 sm:w-8 sm:h-8 text-amber-400 animate-pulse" />
+          ) : icon === 'ended' ? (
             <LogOut className="w-7 h-7 text-[#8A99AD]" />
           ) : icon === 'removed' ? (
             <UserX className="w-7 h-7 text-rose-400" />
@@ -122,9 +130,16 @@ export const MessageScreen: React.FC<MessageScreenProps> = ({
           {title}
         </h2>
 
-        <p className="text-sm sm:text-base text-white font-medium mb-2">
-          {message}
-        </p>
+        {clockInText ? (
+          <div className="my-3 px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-400/30 text-amber-200 flex items-center justify-center gap-2 font-mono text-sm sm:text-base font-semibold shadow-[0_0_16px_rgba(251,191,36,0.12)]">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>{clockInText}</span>
+          </div>
+        ) : (
+          <p className="text-sm sm:text-base text-white font-medium mb-2">
+            {message}
+          </p>
+        )}
 
         {submessage && (
           <p className="text-xs text-static-subtext mb-6 sm:mb-8">
