@@ -202,11 +202,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const nameLength = displayName.trim().length;
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] bg-background text-static-text overflow-hidden">
-      {/* Subtle breathing dot grid background (5-6% visibility) */}
-      <div className="home-grid-pattern" aria-hidden="true" />
-
-      {/* Ambient background soft glow */}
+    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] bg-background bg-static-noise text-static-text overflow-hidden">
+      {/* Ambient background glow */}
       <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] sm:w-[500px] h-[320px] sm:h-[500px] bg-static-accent/5 rounded-full blur-[100px] pointer-events-none" />
 
       {/* Main Container */}
@@ -223,12 +220,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         </div>
 
         {/* Hero Title */}
-        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mb-3 sm:mb-4 leading-tight drop-shadow-md">
+        <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white mb-3 sm:mb-4 leading-tight">
           Voice, without the noise.
         </h1>
 
         {/* Supporting subtext */}
-        <p className="text-sm sm:text-base text-static-subtext mb-8 sm:mb-10 max-w-sm font-normal drop-shadow-sm">
+        <p className="text-sm sm:text-base text-static-subtext mb-8 sm:mb-10 max-w-sm font-normal">
           Direct, private voice conversations. No accounts or downloads required.
         </p>
 
