@@ -134,6 +134,7 @@ export function App() {
   // Unified FIFO Notification Queue with deduplication
   const [notificationQueue, setNotificationQueue] = useState<NotificationItem[]>([]);
   const recentNotificationsRef = useRef<Map<string, number>>(new Map());
+  const recentParticipantEventsRef = useRef<Map<string, number>>(new Map());
 
   const queueNotification = useCallback((item: Omit<NotificationItem, 'id'>) => {
     const now = Date.now();
@@ -149,9 +150,27 @@ export function App() {
         recentNotificationsRef.current.delete(msg);
       }
     }
+    for (const [key, timestamp] of recentParticipantEventsRef.current.entries()) {
+      if (now - timestamp > 15000) {
+        recentParticipantEventsRef.current.delete(key);
+      }
+    }
 
     const id = 'notif_' + Math.random().toString(36).substring(2, 9);
-    setNotificationQueue((prev) => [...prev, { ...item, id }]);
+    setNotificationQueue((prev) => {
+      // Ensure only a single active notification for special singleton types (invitations and host)
+      if (item.type === 'invitations-open' || item.type === 'invitations-closed') {
+        const filtered = prev.filter(
+          (n) => n.type !== 'invitations-open' && n.type !== 'invitations-closed'
+        );
+        return [...filtered, { ...item, id }];
+      }
+      if (item.type === 'host') {
+        const filtered = prev.filter((n) => n.type !== 'host');
+        return [...filtered, { ...item, id }];
+      }
+      return [...prev, { ...item, id }];
+    });
   }, []);
 
   const handleDismissNotification = useCallback(() => {
@@ -506,11 +525,21 @@ export function App() {
     };
 
     const handleInvitationsUpdated = (payload: { open: boolean }) => {
-      showToast(payload.open ? 'Invitations opened.' : 'Invitations paused.');
+      queueNotification({
+        message: payload.open ? 'Invitations opened' : 'Invitations paused',
+        type: payload.open ? 'invitations-open' : 'invitations-closed',
+        icon: payload.open ? 'unlock' : 'lock',
+        durationMs: 3200
+      });
     };
 
     const handleParticipantJoinedParty = (payload: { participantId: string; displayName: string }) => {
       if (payload.participantId !== roomStateRef.current?.currentUser.participantId) {
+        const now = Date.now();
+        const lastSeen = recentParticipantEventsRef.current.get(`join_${payload.participantId}`);
+        if (lastSeen && now - lastSeen < 4000) return;
+        recentParticipantEventsRef.current.set(`join_${payload.participantId}`, now);
+
         notificationSound.playJoinTing();
         queueNotification({
           message: `${payload.displayName || 'Someone'} joined the party`,
@@ -532,6 +561,11 @@ export function App() {
         participantId = payload.participantId;
         displayName = payload.displayName;
       }
+
+      const now = Date.now();
+      const lastDeparture = recentParticipantEventsRef.current.get(`leave_${participantId}`);
+      if (lastDeparture && now - lastDeparture < 4000) return;
+      recentParticipantEventsRef.current.set(`leave_${participantId}`, now);
 
       const name = displayName || 'Someone';
       notificationSound.playLeaveTing();
@@ -561,6 +595,11 @@ export function App() {
         });
       }, 6000);
 
+      const now = Date.now();
+      const lastDeparture = recentParticipantEventsRef.current.get(`leave_${payload.participantId}`);
+      if (lastDeparture && now - lastDeparture < 4000) return;
+      recentParticipantEventsRef.current.set(`leave_${payload.participantId}`, now);
+
       queueNotification({
         message: `${name} disconnected`,
         icon: 'alert',
@@ -569,6 +608,11 @@ export function App() {
     };
 
     const handleParticipantKicked = (payload: { participantId: string; displayName?: string }) => {
+      const now = Date.now();
+      const lastDeparture = recentParticipantEventsRef.current.get(`leave_${payload.participantId}`);
+      if (lastDeparture && now - lastDeparture < 4000) return;
+      recentParticipantEventsRef.current.set(`leave_${payload.participantId}`, now);
+
       const name = payload.displayName || 'Someone';
       notificationSound.playLeaveTing();
       queueNotification({
@@ -1080,7 +1124,6 @@ export function App() {
         roomId={roomState.room.roomId}
         roomName={roomState.room.roomName}
         isHost={isHost}
-        invitationsOpen={roomState.room.invitationsOpen}
         connectionStatus={connectionStatus}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
       />

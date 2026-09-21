@@ -6,7 +6,6 @@ interface TopBarProps {
   roomId: string;
   roomName: string;
   isHost: boolean;
-  invitationsOpen: boolean;
   connectionStatus: ConnectionStatus;
   onOpenSettingsModal: () => void;
 }
@@ -14,7 +13,6 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   roomName,
   isHost,
-  invitationsOpen,
   connectionStatus,
   onOpenSettingsModal
 }) => {
@@ -73,16 +71,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         </span>
       </div>
 
-      {/* Notifications & System Status Center Strip */}
-      <div className="flex items-center justify-center gap-2 py-2">
-        {!invitationsOpen && (
-          <span className="px-2 sm:px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-[10px] sm:text-[11px] font-mono tracking-wide flex items-center gap-1.5 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span className="hidden sm:inline">Invitations paused</span>
-            <span className="sm:hidden">Paused</span>
-          </span>
-        )}
-      </div>
+
 
       {/* Right: Clean minimal room settings */}
       <div className="flex items-center gap-2 shrink-0 py-2">
