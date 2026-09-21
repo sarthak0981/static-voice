@@ -21,7 +21,6 @@ interface LandingPageProps {
   errorMessage?: string;
   recentRoom?: RecentRoomInfo | null;
   onDismissRecentRoom?: () => void;
-  onToggleDiagnostics?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -31,8 +30,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   isLoading,
   errorMessage,
   recentRoom,
-  onDismissRecentRoom,
-  onToggleDiagnostics
+  onDismissRecentRoom
 }) => {
   const [roomIdInput, setRoomIdInput] = useState(initialRoomId.toUpperCase());
   const [displayName, setDisplayName] = useState('');
@@ -204,9 +202,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const nameLength = displayName.trim().length;
 
   return (
-    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] bg-background bg-static-noise text-static-text overflow-hidden">
+    <div className="relative min-h-[100dvh] flex flex-col items-center justify-center px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] bg-background text-static-text overflow-hidden">
+      {/* Subtle breathing cybernetic grid background */}
+      <div className="home-grid-pattern" aria-hidden="true" />
+
       {/* Ambient background glow */}
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] sm:w-[500px] h-[320px] sm:h-[500px] bg-static-accent/5 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[340px] sm:w-[540px] h-[340px] sm:h-[540px] bg-static-accent/10 rounded-full blur-[110px] pointer-events-none animate-pulse-glow" />
 
       {/* Main Container */}
       <div className="relative z-10 w-full max-w-md flex flex-col items-center text-center">
@@ -351,18 +352,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </button>
         </form>
 
-        <div className="mt-12 flex flex-col items-center justify-center gap-2">
+        <div className="mt-12 flex flex-col items-center justify-center">
           <p className="text-[11px] text-[#4E586E] font-mono tracking-wide">
             PRIVATE • EPHEMERAL • DIRECT
           </p>
-          <button
-            type="button"
-            onClick={onToggleDiagnostics}
-            title="STATIC v1.3.5 • Developer Diagnostics"
-            className="text-[10px] text-white/20 hover:text-white/40 font-mono tracking-widest transition-colors cursor-pointer select-none"
-          >
-            v1.3.5
-          </button>
         </div>
       </div>
 

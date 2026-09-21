@@ -1244,7 +1244,6 @@ export function App() {
           errorMessage={errorMessage}
           recentRoom={recentRoom}
           onDismissRecentRoom={handleDismissRecentRoom}
-          onToggleDiagnostics={() => setIsDiagnosticsOpen(true)}
         />
       </div>
     );
@@ -1429,16 +1428,6 @@ export function App() {
         onConfirmEnd={handleEndRoom}
         isLoading={isLoading}
       />
-
-      {/* Discreet Version Tag / WebRTC Diagnostics Trigger */}
-      <button
-        type="button"
-        onClick={() => setIsDiagnosticsOpen(true)}
-        title="STATIC v1.3.6 • WebRTC Diagnostics HUD"
-        className="fixed bottom-1.5 right-3 text-[10px] text-white/20 hover:text-white/50 font-mono tracking-widest select-none z-30 transition-colors cursor-pointer"
-      >
-        v1.3.6
-      </button>
     </div>
   );
 }

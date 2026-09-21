@@ -1,6 +1,6 @@
 {
   "name": "static-voice",
-  "version": "1.3.6",
+  "version": "1.3.7",
   "description": "STATIC — Real-Time Browser Voice Chat",
   "private": true,
   "workspaces": [

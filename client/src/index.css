@@ -42,6 +42,36 @@
   background-size: 24px 24px;
 }
 
+/* Futuristic Cybernetic Ambient Grid with Subtle Breathing */
+@keyframes gridBreathe {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.90;
+    transform: scale(1.025);
+  }
+}
+
+.home-grid-pattern {
+  position: absolute;
+  inset: -5%;
+  width: 110%;
+  height: 110%;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.09) 1px, transparent 1px),
+    radial-gradient(circle at 1px 1px, rgba(0, 229, 153, 0.4) 1.5px, transparent 1.5px);
+  background-size: 36px 36px, 36px 36px, 36px 36px;
+  background-position: -1px -1px, -1px -1px, -1px -1px;
+  mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 25%, rgba(0, 0, 0, 0.45) 65%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 25%, rgba(0, 0, 0, 0.45) 65%, transparent 100%);
+  pointer-events: none;
+  animation: gridBreathe 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: opacity, transform;
+}
+
 /* Glass panel */
 .glass-panel {
   background: rgba(18, 20, 28, 0.7);
