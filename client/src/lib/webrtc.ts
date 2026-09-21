@@ -921,54 +921,55 @@ export class WebRTCVoiceEngine {
     return this.diagnostics.getAllStats();
   }
 
+  private onSignalReceivedHandler = async (data: SignalData) => {
+    await this.handleSignalReceived(data);
+  };
+
+  private onPeerReadyHandler = async ({ socketId, participantId }: any) => {
+    await this.createOffer(socketId, participantId);
+  };
+
+  private onParticipantLeftHandler = (payload: any) => {
+    const pId = typeof payload === 'string' ? payload : payload?.participantId;
+    if (pId) this.removePeer(pId);
+  };
+
+  private onParticipantDisconnectedHandler = (payload: any) => {
+    const pId = typeof payload === 'string' ? payload : payload?.participantId;
+    if (pId) this.removePeer(pId);
+  };
+
+  private onParticipantKickedHandler = (payload: any) => {
+    const pId = typeof payload === 'string' ? payload : payload?.participantId;
+    if (pId) this.removePeer(pId);
+  };
+
   /**
    * Setup socket event listeners for WebRTC signaling
    */
   private setupSocketListeners() {
     const socket = getSocket();
-
-    // Signal received from another Party peer
-    socket.on('signal-received', async (data: SignalData) => {
-      await this.handleSignalReceived(data);
-    });
-
-    // Server instructs this peer to initiate an offer to another peer
-    socket.on('peer-ready-for-offer', async ({ socketId, participantId }) => {
-      await this.createOffer(socketId, participantId);
-    });
-
-    // Peer left party
-    socket.on('participant-left-party', (payload: any) => {
-      const pId = typeof payload === 'string' ? payload : payload?.participantId;
-      if (pId) {
-        this.removePeer(pId);
-      }
-    });
-
-    // Peer disconnected
-    socket.on('participant-disconnected', (payload: any) => {
-      const pId = typeof payload === 'string' ? payload : payload?.participantId;
-      if (pId) {
-        this.removePeer(pId);
-      }
-    });
-
-    // Peer kicked or removed from party
-    socket.on('participant-kicked', (payload: any) => {
-      const pId = typeof payload === 'string' ? payload : payload?.participantId;
-      if (pId) {
-        this.removePeer(pId);
-      }
-    });
+    socket.on('signal-received', this.onSignalReceivedHandler);
+    socket.on('peer-ready-for-offer', this.onPeerReadyHandler);
+    socket.on('participant-left-party', this.onParticipantLeftHandler);
+    socket.on('participant-disconnected', this.onParticipantDisconnectedHandler);
+    socket.on('participant-kicked', this.onParticipantKickedHandler);
   }
 
   /**
    * Fully tears down engine, audio streams, and connections
    */
   public teardown() {
-    this.logVoice('engine teardown — cleaning all peers and audio elements');
+    this.logVoice('engine teardown — cleaning all peers, tracks, and listeners');
 
     this.diagnostics.stop();
+
+    const socket = getSocket();
+    socket.off('signal-received', this.onSignalReceivedHandler);
+    socket.off('peer-ready-for-offer', this.onPeerReadyHandler);
+    socket.off('participant-left-party', this.onParticipantLeftHandler);
+    socket.off('participant-disconnected', this.onParticipantDisconnectedHandler);
+    socket.off('participant-kicked', this.onParticipantKickedHandler);
 
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
@@ -980,7 +981,10 @@ export class WebRTCVoiceEngine {
     }
 
     if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => track.stop());
+      this.localStream.getTracks().forEach((track) => {
+        track.enabled = false;
+        track.stop();
+      });
       this.localStream = null;
     }
 

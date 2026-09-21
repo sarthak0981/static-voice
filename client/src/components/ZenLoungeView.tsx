@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, Clock, Shield, Mic, Check } from 'lucide-react';
+import { LogOut, Clock, Shield, Check } from 'lucide-react';
 
 import { MicrophoneState } from '../types/index.js';
 
@@ -16,8 +16,8 @@ export const ZenLoungeView: React.FC<ZenLoungeViewProps> = ({
   displayName,
   partyName,
   roomCode: _roomCode,
-  microphoneState = 'OFF',
-  onEnableMic,
+  microphoneState: _microphoneState,
+  onEnableMic: _onEnableMic,
   onLeaveRoom,
 }) => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -97,21 +97,10 @@ export const ZenLoungeView: React.FC<ZenLoungeViewProps> = ({
             <span className="text-[#00E599] font-medium truncate max-w-[150px]">{displayName}</span>
           </div>
 
-          {microphoneState === 'ON' ? (
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#00E599]/10 border border-[#00E599]/30 text-xs font-mono text-[#00E599]">
-              <Check className="w-3.5 h-3.5 text-[#00E599]" />
-              <span>Mic Ready</span>
-            </div>
-          ) : (
-            <button
-              onClick={onEnableMic}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#00E599]/15 hover:bg-[#00E599]/25 border border-[#00E599]/40 text-xs font-mono text-[#00E599] transition-all duration-200 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(0,229,153,0.1)]"
-            >
-              <Mic className="w-3.5 h-3.5" />
-              <span>Enable & Test Mic</span>
-            </button>
-          )}
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#00E599]/10 border border-[#00E599]/30 text-xs font-mono text-[#00E599]">
+            <Check className="w-3.5 h-3.5 text-[#00E599]" />
+            <span>Microphone Tested & Ready</span>
+          </div>
         </div>
       </main>
 

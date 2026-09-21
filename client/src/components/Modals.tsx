@@ -18,8 +18,8 @@ export const EndRoomModal: React.FC<EndRoomModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 text-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+      <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 text-center modal-content-anim">
         <div className="w-12 h-12 rounded-xl bg-static-danger/10 border border-static-danger/20 text-static-danger flex items-center justify-center mx-auto mb-4">
           <AlertTriangle className="w-6 h-6" />
         </div>
@@ -92,8 +92,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 modal-content-anim">
         <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-5">
           <div className="flex items-center gap-2">
             <Share2 className="w-5 h-5 text-static-accent" />
@@ -172,8 +172,8 @@ export const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 modal-content-anim">
         <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-5">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-static-accent" />

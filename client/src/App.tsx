@@ -131,10 +131,25 @@ export function App() {
     screenStateRef.current = screenState;
   }, [screenState]);
 
-  // Unified FIFO Notification Queue
+  // Unified FIFO Notification Queue with deduplication
   const [notificationQueue, setNotificationQueue] = useState<NotificationItem[]>([]);
+  const recentNotificationsRef = useRef<Map<string, number>>(new Map());
 
   const queueNotification = useCallback((item: Omit<NotificationItem, 'id'>) => {
+    const now = Date.now();
+    const lastSeen = recentNotificationsRef.current.get(item.message);
+    if (lastSeen && now - lastSeen < 3000) {
+      return; // Deduplicate identical notification within 3 seconds
+    }
+    recentNotificationsRef.current.set(item.message, now);
+
+    // Clean up stale entries
+    for (const [msg, timestamp] of recentNotificationsRef.current.entries()) {
+      if (now - timestamp > 10000) {
+        recentNotificationsRef.current.delete(msg);
+      }
+    }
+
     const id = 'notif_' + Math.random().toString(36).substring(2, 9);
     setNotificationQueue((prev) => [...prev, { ...item, id }]);
   }, []);
@@ -277,19 +292,7 @@ export function App() {
     const socket = getSocket();
 
     const handleRoomStateUpdated = (updatedState: ClientRoomState) => {
-      // Check if this local user was promoted from GUEST to HOST!
-      if (
-        prevRoleRef.current === 'GUEST' &&
-        updatedState.currentUser.role === 'HOST'
-      ) {
-        queueNotification({
-          message: 'You are now the host',
-          type: 'host',
-          icon: 'host',
-          durationMs: 4000
-        });
-        notificationSound.playJoinTing();
-      }
+      // Host promotion notification is handled exclusively in handleHostChanged
       prevRoleRef.current = updatedState.currentUser.role;
 
       // Sync chat history strictly from server for this room (zero cross-room leakage)
@@ -328,6 +331,10 @@ export function App() {
     };
 
     const handleKicked = (payload: { reason: string }) => {
+      const activeRoomId = roomStateRef.current?.room.roomId;
+      if (activeRoomId) {
+        clearStoredSessionToken(activeRoomId);
+      }
       try {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
@@ -349,6 +356,10 @@ export function App() {
     };
 
     const handleLoungeCleared = (payload: { reason: string }) => {
+      const activeRoomId = roomStateRef.current?.room.roomId;
+      if (activeRoomId) {
+        clearStoredSessionToken(activeRoomId);
+      }
       try {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
@@ -370,6 +381,10 @@ export function App() {
     };
 
     const handleRemovedFromParty = (payload: { reason: string }) => {
+      const activeRoomId = roomStateRef.current?.room.roomId;
+      if (activeRoomId) {
+        clearStoredSessionToken(activeRoomId);
+      }
       try {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
@@ -391,6 +406,10 @@ export function App() {
     };
 
     const handleRoomEnded = (payload: { reason: string }) => {
+      const activeRoomId = roomStateRef.current?.room.roomId;
+      if (activeRoomId) {
+        clearStoredSessionToken(activeRoomId);
+      }
       try {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
@@ -621,6 +640,18 @@ export function App() {
   const handleCreateRoom = async (roomName: string, displayName: string) => {
     setIsLoading(true);
     setErrorMessage(undefined);
+
+    // Automatically test & verify microphone before creating room
+    if (webrtcEngineRef.current) {
+      webrtcEngineRef.current.unlockAudio();
+      const micOk = await webrtcEngineRef.current.startMicrophone(true);
+      if (!micOk) {
+        setIsLoading(false);
+        setErrorMessage('Microphone access is required to host a room. Please grant microphone permission in your browser.');
+        return;
+      }
+    }
+
     const socket = getSocket();
 
     socket.emit('create-room', { roomName, displayName }, async (res: any) => {
@@ -654,6 +685,9 @@ export function App() {
           await webrtcEngineRef.current.startMicrophone(true);
         }
       } else {
+        if (webrtcEngineRef.current) {
+          webrtcEngineRef.current.teardown();
+        }
         setErrorMessage(res.error || 'Failed to create room.');
       }
     });
@@ -663,6 +697,18 @@ export function App() {
   const handleJoinRoom = async (roomId: string, displayName: string) => {
     setIsLoading(true);
     setErrorMessage(undefined);
+
+    // Automatically test & verify microphone before joining room
+    if (webrtcEngineRef.current) {
+      webrtcEngineRef.current.unlockAudio();
+      const micOk = await webrtcEngineRef.current.startMicrophone(true);
+      if (!micOk) {
+        setIsLoading(false);
+        setErrorMessage('Microphone access is required to join. Please grant microphone permission in your browser.');
+        return;
+      }
+    }
+
     const socket = getSocket();
     const token = getStoredSessionToken(roomId) || undefined;
 
@@ -701,6 +747,9 @@ export function App() {
           }
         }
       } else {
+        if (webrtcEngineRef.current) {
+          webrtcEngineRef.current.teardown();
+        }
         if (res.errorCode === 'INVITATIONS_CLOSED') {
           setScreenState('INVITATIONS_CLOSED');
         } else {
@@ -902,6 +951,15 @@ export function App() {
 
   // Reset to Home
   const handleReturnHome = () => {
+    const activeRoomId = roomStateRef.current?.room.roomId;
+    if (activeRoomId) {
+      clearStoredSessionToken(activeRoomId);
+    }
+    try {
+      localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+    } catch {}
+    setRecentRoom(null);
+
     if (webrtcEngineRef.current) {
       webrtcEngineRef.current.teardown();
     }
@@ -1161,10 +1219,10 @@ export function App() {
       <button
         type="button"
         onClick={() => setIsDiagnosticsOpen(true)}
-        title="STATIC v1.3.4 • WebRTC Diagnostics HUD"
+        title="STATIC v1.3.5 • WebRTC Diagnostics HUD"
         className="fixed bottom-1.5 right-3 text-[10px] text-white/20 hover:text-white/50 font-mono tracking-widest select-none z-30 transition-colors cursor-pointer"
       >
-        v1.3.4
+        v1.3.5
       </button>
     </div>
   );

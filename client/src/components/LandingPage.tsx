@@ -358,18 +358,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <button
             type="button"
             onClick={onToggleDiagnostics}
-            title="STATIC v1.3.4 • Developer Diagnostics"
+            title="STATIC v1.3.5 • Developer Diagnostics"
             className="text-[10px] text-white/20 hover:text-white/40 font-mono tracking-widest transition-colors cursor-pointer select-none"
           >
-            v1.3.4
+            v1.3.5
           </button>
         </div>
       </div>
 
       {/* CREATE ROOM MODAL */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 text-left">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 text-left modal-content-anim">
             <div className="flex items-center justify-between pb-3 border-b border-surface-border mb-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-static-accent" />
@@ -457,7 +457,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   disabled={!displayName.trim() || Boolean(nameError) || isLoading}
                   className="flex-1 py-3 px-4 rounded-xl bg-static-accent text-background font-mono font-bold text-xs hover:bg-static-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
                 >
-                  {isLoading ? 'CREATING…' : 'START PARTY'}
+                  {isLoading ? 'VERIFYING AUDIO…' : 'START PARTY'}
                 </button>
               </div>
             </form>
@@ -467,8 +467,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
       {/* JOIN ROOM USERNAME PROMPT MODAL */}
       {isJoinModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 text-left">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 text-left modal-content-anim">
             <div className="flex items-center justify-between pb-3 border-b border-surface-border mb-4">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-static-accent" />
@@ -554,7 +554,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   disabled={!displayName.trim() || Boolean(nameError) || isLoading}
                   className="flex-1 py-3 px-4 rounded-xl bg-static-accent text-background font-mono font-bold text-xs hover:bg-static-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
                 >
-                  {isLoading ? 'ENTERING…' : 'ENTER ROOM'}
+                  {isLoading ? 'VERIFYING AUDIO…' : 'ENTER ROOM'}
                 </button>
               </div>
             </form>

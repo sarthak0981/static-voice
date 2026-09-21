@@ -651,6 +651,14 @@ export class RoomManager {
     const all = Array.from(room.participants.values());
     if (room.inactivityTimer) clearTimeout(room.inactivityTimer);
     if (room.hostGraceTimer) clearTimeout(room.hostGraceTimer);
+
+    // Thorough memory wipe: room ceases to exist immediately
+    room.participants.clear();
+    room.socketToParticipant.clear();
+    room.tokenToParticipant.clear();
+    room.chatHistory = [];
+    if (room.partyOrder) room.partyOrder = [];
+
     this.rooms.delete(room.roomId);
     return { success: true, allParticipants: all };
   }

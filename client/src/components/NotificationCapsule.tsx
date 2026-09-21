@@ -99,7 +99,7 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
         role="status"
         aria-live="polite"
         onClick={handleClick}
-        className={`pointer-events-auto inline-flex items-center gap-2.5 px-4 py-2 rounded-full shadow-2xl shadow-black/80 backdrop-blur-xl text-white text-xs font-mono select-none cursor-pointer transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`pointer-events-auto inline-flex items-center gap-2.5 px-4 py-2 rounded-full shadow-2xl shadow-black/80 backdrop-blur-xl text-white text-xs font-mono select-none cursor-pointer transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] ${
           isHostNotification
             ? 'bg-[#0D0F16]/95 border border-amber-400/70 shadow-[0_0_22px_rgba(251,191,36,0.22)] hover:border-amber-400 hover:shadow-[0_0_28px_rgba(251,191,36,0.3)]'
             : 'bg-[#0D0F16]/95 border border-white/10 hover:border-white/20'

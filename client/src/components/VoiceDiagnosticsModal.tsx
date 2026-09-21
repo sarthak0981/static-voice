@@ -66,12 +66,12 @@ export const VoiceDiagnosticsModal: React.FC<VoiceDiagnosticsModalProps> = ({
   const statsList = Array.from(statsMap.values());
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-150 select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md modal-backdrop-anim select-none">
       <div
         role="dialog"
         aria-modal="true"
         aria-label="WebRTC Voice Diagnostics HUD"
-        className="relative w-full max-w-4xl bg-[#090B10] border border-white/10 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl shadow-black/90 max-h-[92dvh] flex flex-col overflow-hidden text-neutral-200 font-sans"
+        className="relative w-full max-w-4xl bg-[#090B10] border border-white/10 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl shadow-black/90 max-h-[92dvh] flex flex-col overflow-hidden text-neutral-200 font-sans modal-content-anim"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-white/10 shrink-0">

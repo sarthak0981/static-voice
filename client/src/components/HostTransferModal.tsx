@@ -34,8 +34,8 @@ export const HostTransferModal: React.FC<HostTransferModalProps> = ({
   const longestMember = sortedByPartyTime[0];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150">
-      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 modal-content-anim">
         <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-4">
           <div className="flex items-center gap-2">
             <Crown className="w-5 h-5 text-amber-400" />
