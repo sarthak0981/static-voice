@@ -154,8 +154,10 @@ export interface ClientToServerEvents {
 // Server to Client events
 export interface ServerToClientEvents {
   'room-state-updated': (state: ClientRoomState) => void;
-  'participant-joined-party': (participant: Participant) => void;
+  'participant-joined-party': (participant: Participant | { participantId: string; displayName?: string }) => void;
   'participant-left-party': (payload: { participantId: string; displayName?: string } | string) => void;
+  'participant-disconnected': (payload: { participantId: string; displayName?: string }) => void;
+  'participant-kicked': (payload: { participantId: string; displayName?: string }) => void;
   'participant-admitted': (participant: Participant) => void;
   'queue-position-updated': (payload: { position: number }) => void;
   'kicked': (payload: { reason: string }) => void;

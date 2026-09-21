@@ -70,6 +70,96 @@ class NotificationSound {
       // Audio playback fails gracefully if browser autoplay policy restricts it
     }
   }
+
+  /**
+   * Plays a crisp, ascending "ting" chime when someone joins the party.
+   * Dual upward notes (D5 -> A5) with warm resonance.
+   */
+  public playJoinTing(): void {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+
+      // Tone 1: D5 (587.33 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now);
+
+      gain1.gain.setValueAtTime(0.0001, now);
+      gain1.gain.exponentialRampToValueAtTime(0.038, now + 0.015);
+      gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.30);
+
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.32);
+
+      // Tone 2: A5 (880.00 Hz) - Ascending interval
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(880.00, now + 0.08);
+
+      gain2.gain.setValueAtTime(0.0001, now + 0.08);
+      gain2.gain.exponentialRampToValueAtTime(0.042, now + 0.095);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.08);
+      osc2.stop(now + 0.48);
+    } catch {
+      // Audio playback fails gracefully
+    }
+  }
+
+  /**
+   * Plays a subtle, gentle downward "ting" chime when someone leaves or disconnects.
+   * Dual downward notes (G5 -> C5) with smooth, unobtrusive decay.
+   */
+  public playLeaveTing(): void {
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+
+      // Tone 1: G5 (783.99 Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(783.99, now);
+
+      gain1.gain.setValueAtTime(0.0001, now);
+      gain1.gain.exponentialRampToValueAtTime(0.032, now + 0.012);
+      gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.30);
+
+      // Tone 2: C5 (523.25 Hz) - Descending resolution
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(523.25, now + 0.08);
+
+      gain2.gain.setValueAtTime(0.0001, now + 0.08);
+      gain2.gain.exponentialRampToValueAtTime(0.035, now + 0.095);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.08);
+      osc2.stop(now + 0.45);
+    } catch {
+      // Audio playback fails gracefully
+    }
+  }
 }
 
 export const notificationSound = new NotificationSound();

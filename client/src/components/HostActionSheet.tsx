@@ -3,7 +3,6 @@ import {
   X,
   Volume2,
   VolumeX,
-  MicOff,
   Crown,
   UserMinus,
   UserX,
@@ -21,7 +20,6 @@ interface HostActionSheetProps {
   isCurrentUserHost?: boolean;
   connectionQuality?: ConnectionQuality;
   onVolumeChange: (participantId: string, volume: number) => void;
-  onMuteParticipant?: (participantId: string) => void;
   onTransferHost?: (participantId: string) => void;
   onRemoveFromParty?: (participantId: string) => void;
   onKickParticipant?: (participantId: string) => void;
@@ -39,7 +37,6 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
   isCurrentUserHost = false,
   connectionQuality,
   onVolumeChange,
-  onMuteParticipant,
   onTransferHost,
   onRemoveFromParty,
   onKickParticipant,
@@ -49,8 +46,6 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
   canShiftRight = false
 }) => {
   if (!isOpen || !participant) return null;
-
-  const isMuted = participant.microphoneState === 'MUTED' || participant.microphoneState === 'OFF';
 
   const renderQualityBadge = () => {
     if (!connectionQuality) return null;
@@ -233,26 +228,8 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
         )}
 
         {/* Section 3: Large Thumb-Friendly Host Actions (Host Only) */}
-        {isCurrentUserHost && onMuteParticipant && onTransferHost && onRemoveFromParty && onKickParticipant && (
+        {isCurrentUserHost && onTransferHost && onRemoveFromParty && onKickParticipant && (
           <div className="pt-4 space-y-2.5">
-            {/* Master Mute Toggle */}
-            <button
-              type="button"
-              onClick={() => {
-                onMuteParticipant(participant.participantId);
-                onClose();
-              }}
-              disabled={isMuted}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border text-xs font-mono font-semibold transition-all min-h-[48px] ${
-                isMuted
-                  ? 'bg-white/5 border-white/5 text-[#4E586E] cursor-not-allowed'
-                  : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 cursor-pointer active:scale-[0.98]'
-              }`}
-            >
-              <MicOff className="w-4 h-4 shrink-0" />
-              <span>{isMuted ? 'Participant is Muted' : 'Mute Microphone (Master Mute)'}</span>
-            </button>
-
             {/* Transfer Host */}
             <button
               type="button"

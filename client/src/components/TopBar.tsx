@@ -9,7 +9,6 @@ interface TopBarProps {
   invitationsOpen: boolean;
   connectionStatus: ConnectionStatus;
   onOpenSettingsModal: () => void;
-  onToggleDiagnostics?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -17,8 +16,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isHost,
   invitationsOpen,
   connectionStatus,
-  onOpenSettingsModal,
-  onToggleDiagnostics
+  onOpenSettingsModal
 }) => {
 
   const renderStatusBadge = () => {
@@ -86,16 +84,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      {/* Right: Clean minimal room settings & Live Version Badge */}
+      {/* Right: Clean minimal room settings */}
       <div className="flex items-center gap-2 shrink-0 py-2">
-        <button
-          type="button"
-          onClick={onToggleDiagnostics}
-          title="STATIC v1.3.0 • Click for WebRTC Diagnostics HUD (Ctrl+Shift+D)"
-          className="px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[10px] font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer select-none"
-        >
-          v1.3.0
-        </button>
         {isHost && (
           <button
             type="button"

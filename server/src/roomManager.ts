@@ -107,7 +107,7 @@ export class RoomManager {
       displayName: validation.normalized,
       role: 'HOST',
       state: 'PARTY',
-      microphoneState: 'CONNECTING',
+      microphoneState: 'ON',
       isSpeaking: false,
       joinedAt: now,
       partyJoinedAt: now
@@ -265,7 +265,7 @@ export class RoomManager {
 
     target.state = 'PARTY';
     target.partyJoinedAt = Date.now();
-    target.microphoneState = 'CONNECTING';
+    target.microphoneState = target.microphoneState === 'MUTED' ? 'MUTED' : 'ON';
 
     if (!room.partyOrder) {
       room.partyOrder = [];
@@ -649,7 +649,7 @@ export class RoomManager {
     micState: MicrophoneState
   ): Participant | undefined {
     const participant = this.getParticipantBySocket(room, socketId);
-    if (participant && participant.state === 'PARTY') {
+    if (participant) {
       participant.microphoneState = micState;
       if (micState === 'MUTED' || micState === 'OFF' || micState === 'DENIED') {
         participant.isSpeaking = false;

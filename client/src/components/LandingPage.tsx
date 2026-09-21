@@ -6,12 +6,22 @@ import {
   MAX_USERNAME_LENGTH
 } from '../lib/validation.js';
 
+export interface RecentRoomInfo {
+  roomId: string;
+  roomName: string;
+  displayName: string;
+  timestamp: number;
+}
+
 interface LandingPageProps {
   onCreateRoom: (roomName: string, displayName: string) => Promise<void>;
   onJoinRoom: (roomId: string, displayName: string) => Promise<void>;
   initialRoomId?: string;
   isLoading: boolean;
   errorMessage?: string;
+  recentRoom?: RecentRoomInfo | null;
+  onDismissRecentRoom?: () => void;
+  onToggleDiagnostics?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({
@@ -19,7 +29,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onJoinRoom,
   initialRoomId = '',
   isLoading,
-  errorMessage
+  errorMessage,
+  recentRoom,
+  onDismissRecentRoom,
+  onToggleDiagnostics
 }) => {
   const [roomIdInput, setRoomIdInput] = useState(initialRoomId.toUpperCase());
   const [displayName, setDisplayName] = useState('');
@@ -226,6 +239,45 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </div>
         )}
 
+        {/* Recent Room Accidental Disconnect Recovery Card */}
+        {recentRoom && (
+          <div className="w-full mb-6 p-4 rounded-2xl bg-[#0E121E]/90 border border-[#00E599]/30 shadow-xl shadow-black/40 flex items-center justify-between gap-3 text-left animate-in fade-in slide-in-from-top-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 text-[#00E599] text-[10px] font-mono font-bold tracking-wider mb-1">
+                <span className="w-2 h-2 rounded-full bg-[#00E599] animate-pulse" />
+                <span>ACCIDENTALLY DISCONNECTED?</span>
+              </div>
+              <p className="text-sm font-semibold text-white truncate">
+                {recentRoom.roomName || `Party ${recentRoom.roomId}`}
+              </p>
+              <p className="text-xs text-[#8A99AD] font-mono truncate">
+                Rejoin as <span className="text-white font-medium">{recentRoom.displayName}</span>
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => onJoinRoom(recentRoom.roomId, recentRoom.displayName)}
+                disabled={isLoading}
+                className="px-4 py-2 rounded-xl bg-[#00E599] hover:bg-[#00E599]/90 text-black font-mono font-bold text-xs tracking-wider transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                REJOIN
+              </button>
+              {onDismissRecentRoom && (
+                <button
+                  type="button"
+                  onClick={onDismissRecentRoom}
+                  aria-label="Dismiss rejoin banner"
+                  className="p-1.5 text-[#8A99AD] hover:text-white transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Primary Action: CREATE ROOM */}
         <button
           type="button"
@@ -299,11 +351,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           </button>
         </form>
 
-        <p className="mt-12 text-xs text-static-muted font-mono tracking-wide flex items-center justify-center gap-2">
-          <span>NO ACCOUNTS • END-TO-END AUDIO • ZERO RECORDINGS</span>
-          <span className="text-[#4E586E]">•</span>
-          <span className="text-[#00E599] font-semibold">v1.3.0</span>
-        </p>
+        <div className="mt-12 flex flex-col items-center justify-center gap-2">
+          <p className="text-[11px] text-[#4E586E] font-mono tracking-wide">
+            NO ACCOUNTS • END-TO-END AUDIO • ZERO RECORDINGS
+          </p>
+          <button
+            type="button"
+            onClick={onToggleDiagnostics}
+            title="STATIC v1.3.1 • Developer Diagnostics"
+            className="text-[10px] text-white/20 hover:text-white/40 font-mono tracking-widest transition-colors cursor-pointer select-none"
+          >
+            v1.3.1
+          </button>
+        </div>
       </div>
 
       {/* CREATE ROOM MODAL */}

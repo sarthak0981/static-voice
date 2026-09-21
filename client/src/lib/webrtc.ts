@@ -179,6 +179,20 @@ export class WebRTCVoiceEngine {
       this.localStream.active &&
       this.localStream.getAudioTracks().some((t) => t.readyState === 'live')
     ) {
+      // Re-affirm hardware track enabled state matches mute status
+      const audioTracks = this.localStream.getAudioTracks();
+      audioTracks.forEach((track) => {
+        track.enabled = !this.isMuted;
+      });
+
+      const state: MicrophoneState = this.isMuted ? 'MUTED' : 'ON';
+      this.callbacks.onMicrophoneStateChange(state);
+      getSocket().emit('update-mic-state', { microphoneState: state });
+
+      // Ensure local tracks are synced to all active peer connections
+      for (const peer of this.peersBySocketId.values()) {
+        this.syncLocalTrackToPeer(peer);
+      }
       return true;
     }
     if (this.micStartingPromise) {

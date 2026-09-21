@@ -230,6 +230,12 @@ io.on('connection', (socket) => {
     const admitted = result.promotedParticipant;
     io.to(admitted.socketId).emit('participant-admitted', admitted);
 
+    // Notify all room members of the new party member
+    io.to(room.roomId).emit('participant-joined-party', {
+      participantId: admitted.participantId,
+      displayName: admitted.displayName
+    });
+
     const currentParty = roomManager.getPartyParticipants(room);
     for (const member of currentParty) {
       if (member.participantId !== admitted.participantId) {
@@ -320,7 +326,7 @@ io.on('connection', (socket) => {
       reason: 'You were removed from the room.'
     });
 
-    socket.to(room.roomId).emit('participant-left-party', {
+    socket.to(room.roomId).emit('participant-kicked', {
       participantId: result.kickedParticipant.participantId,
       displayName: result.kickedParticipant.displayName
     });
@@ -344,7 +350,7 @@ io.on('connection', (socket) => {
       reason: 'The host removed you from the Party.'
     });
 
-    socket.to(room.roomId).emit('participant-left-party', {
+    socket.to(room.roomId).emit('participant-kicked', {
       participantId: result.removedParticipant.participantId,
       displayName: result.removedParticipant.displayName
     });
@@ -518,7 +524,7 @@ io.on('connection', (socket) => {
         broadcastRoomState(result.room.roomId);
       } else {
         if (result.participant) {
-          socket.to(result.room.roomId).emit('participant-left-party', {
+          socket.to(result.room.roomId).emit('participant-disconnected', {
             participantId: result.participant.participantId,
             displayName: result.participant.displayName
           });

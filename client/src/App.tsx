@@ -15,7 +15,7 @@ import {
   clearStoredSessionToken
 } from './lib/socket.js';
 import { WebRTCVoiceEngine } from './lib/webrtc.js';
-import { LandingPage } from './components/LandingPage.js';
+import { LandingPage, RecentRoomInfo } from './components/LandingPage.js';
 import { TopBar } from './components/TopBar.js';
 import { PartyGrid } from './components/PartyGrid.js';
 import { LoungeDrawer } from './components/LoungeDrawer.js';
@@ -61,6 +61,45 @@ export function App() {
   const [microphoneState, setMicrophoneState] = useState<MicrophoneState>('OFF');
   const [hostGraceSeconds, setHostGraceSeconds] = useState<number | undefined>(undefined);
   const graceIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [disconnectedPeerIds, setDisconnectedPeerIds] = useState<Set<string>>(new Set());
+
+  // Recent Room accidental disconnect recovery
+  const RECENT_ROOM_STORAGE_KEY = 'static_last_active_room';
+  const [recentRoom, setRecentRoom] = useState<RecentRoomInfo | null>(() => {
+    try {
+      const saved = localStorage.getItem('static_last_active_room');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.timestamp && Date.now() - parsed.timestamp < 45 * 60 * 1000) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
+  });
+
+  const handleDismissRecentRoom = () => {
+    try {
+      localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+    } catch {}
+    setRecentRoom(null);
+  };
+
+  // Warn before accidental reload/close while inside active room
+  useEffect(() => {
+    if (!roomState || screenState !== 'ROOM') return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'You are currently in an active voice room. Leaving or reloading will disconnect you.';
+      return e.returnValue;
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [roomState, screenState]);
 
   // In-Party Keyboard Chat & Popup
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -261,6 +300,8 @@ export function App() {
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.startMicrophone();
         webrtcEngineRef.current.unlockAudio();
+        const micState = webrtcEngineRef.current.getIsMuted() ? 'MUTED' : 'ON';
+        getSocket().emit('update-mic-state', { microphoneState: micState });
       }
     };
 
@@ -272,6 +313,10 @@ export function App() {
     };
 
     const handleKicked = (payload: { reason: string }) => {
+      try {
+        localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+      } catch {}
+      setRecentRoom(null);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -284,6 +329,10 @@ export function App() {
     };
 
     const handleLoungeCleared = (payload: { reason: string }) => {
+      try {
+        localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+      } catch {}
+      setRecentRoom(null);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -296,6 +345,10 @@ export function App() {
     };
 
     const handleRemovedFromParty = (payload: { reason: string }) => {
+      try {
+        localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+      } catch {}
+      setRecentRoom(null);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -308,6 +361,10 @@ export function App() {
     };
 
     const handleRoomEnded = (payload: { reason: string }) => {
+      try {
+        localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+      } catch {}
+      setRecentRoom(null);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -384,6 +441,17 @@ export function App() {
       showToast(payload.open ? 'Invitations opened.' : 'The invitations are closed 😊');
     };
 
+    const handleParticipantJoinedParty = (payload: { participantId: string; displayName: string }) => {
+      if (payload.participantId !== roomStateRef.current?.currentUser.participantId) {
+        notificationSound.playJoinTing();
+        queueNotification({
+          message: `${payload.displayName || 'Someone'} joined the party`,
+          icon: 'join',
+          type: 'join'
+        });
+      }
+    };
+
     const handleParticipantLeftParty = (payload: { participantId: string; displayName?: string } | string) => {
       let displayName: string | undefined;
       let participantId: string;
@@ -398,8 +466,45 @@ export function App() {
       }
 
       const name = displayName || 'Someone';
+      notificationSound.playLeaveTing();
       queueNotification({
-        message: `${name} has left the party`,
+        message: `${name} left the room`,
+        icon: 'leave',
+        type: 'leave'
+      });
+    };
+
+    const handleParticipantDisconnected = (payload: { participantId: string; displayName?: string }) => {
+      const name = payload.displayName || 'Someone';
+      notificationSound.playLeaveTing();
+
+      setDisconnectedPeerIds((prev) => {
+        const next = new Set(prev);
+        next.add(payload.participantId);
+        return next;
+      });
+
+      // Clear from disconnected set after 6 seconds
+      setTimeout(() => {
+        setDisconnectedPeerIds((prev) => {
+          const next = new Set(prev);
+          next.delete(payload.participantId);
+          return next;
+        });
+      }, 6000);
+
+      queueNotification({
+        message: `${name} disconnected`,
+        icon: 'alert',
+        type: 'alert'
+      });
+    };
+
+    const handleParticipantKicked = (payload: { participantId: string; displayName?: string }) => {
+      const name = payload.displayName || 'Someone';
+      notificationSound.playLeaveTing();
+      queueNotification({
+        message: `${name} was removed from the party`,
         icon: 'leave',
         type: 'leave'
       });
@@ -417,7 +522,10 @@ export function App() {
     socket.on('host-reconnected', handleHostReconnected);
     socket.on('party-chat-message', handlePartyChatMessage);
     socket.on('invitations-updated', handleInvitationsUpdated);
+    socket.on('participant-joined-party', handleParticipantJoinedParty);
     socket.on('participant-left-party', handleParticipantLeftParty);
+    socket.on('participant-disconnected', handleParticipantDisconnected);
+    socket.on('participant-kicked', handleParticipantKicked);
 
     return () => {
       socket.off('room-state-updated', handleRoomStateUpdated);
@@ -432,7 +540,10 @@ export function App() {
       socket.off('host-reconnected', handleHostReconnected);
       socket.off('party-chat-message', handlePartyChatMessage);
       socket.off('invitations-updated', handleInvitationsUpdated);
+      socket.off('participant-joined-party', handleParticipantJoinedParty);
       socket.off('participant-left-party', handleParticipantLeftParty);
+      socket.off('participant-disconnected', handleParticipantDisconnected);
+      socket.off('participant-kicked', handleParticipantKicked);
       if (graceIntervalRef.current) clearInterval(graceIntervalRef.current);
     };
   }, [screenState, showToast, isChatOpen, roomState?.currentUser.participantId]);
@@ -447,6 +558,16 @@ export function App() {
       setIsLoading(false);
       if (res.success && res.roomId && res.sessionToken) {
         storeSessionToken(res.roomId, res.sessionToken);
+        try {
+          localStorage.setItem(RECENT_ROOM_STORAGE_KEY, JSON.stringify({
+            roomId: res.roomId,
+            roomName: roomName || `Party ${res.roomId}`,
+            displayName,
+            timestamp: Date.now()
+          }));
+        } catch {}
+        setRecentRoom(null);
+
         window.history.pushState({}, '', `/r/${res.roomId}`);
         setScreenState('ROOM');
 
@@ -472,6 +593,16 @@ export function App() {
         if (res.sessionToken) {
           storeSessionToken(roomId, res.sessionToken);
         }
+        try {
+          localStorage.setItem(RECENT_ROOM_STORAGE_KEY, JSON.stringify({
+            roomId,
+            roomName: res.state.room?.roomName || res.state.roomName || `Party ${roomId}`,
+            displayName,
+            timestamp: Date.now()
+          }));
+        } catch {}
+        setRecentRoom(null);
+
         window.history.pushState({}, '', `/r/${roomId}`);
         setRoomState(res.state);
 
@@ -517,15 +648,6 @@ export function App() {
     });
   };
 
-  // Host Action: Master Mute
-  const handleMuteParticipant = (targetParticipantId: string) => {
-    const socket = getSocket();
-    socket.emit('mute-participant', { targetParticipantId }, (res: any) => {
-      if (!res.success) {
-        showToast(res.error || 'Failed to mute participant.');
-      }
-    });
-  };
 
   // Host Action: Transfer Host
   const handleTransferHost = (targetParticipantId: string) => {
@@ -579,6 +701,11 @@ export function App() {
         if (roomState?.room.roomId) {
           clearStoredSessionToken(roomState.room.roomId);
         }
+        try {
+          localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+        } catch {}
+        setRecentRoom(null);
+
         if (webrtcEngineRef.current) {
           webrtcEngineRef.current.teardown();
         }
@@ -611,6 +738,11 @@ export function App() {
       if (roomState?.room.roomId) {
         clearStoredSessionToken(roomState.room.roomId);
       }
+      try {
+        localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
+      } catch {}
+      setRecentRoom(null);
+
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -741,6 +873,9 @@ export function App() {
           initialRoomId={initialRoomId}
           isLoading={isLoading}
           errorMessage={errorMessage}
+          recentRoom={recentRoom}
+          onDismissRecentRoom={handleDismissRecentRoom}
+          onToggleDiagnostics={() => setIsDiagnosticsOpen(true)}
         />
       </div>
     );
@@ -788,7 +923,6 @@ export function App() {
         invitationsOpen={roomState.room.invitationsOpen}
         connectionStatus={connectionStatus}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-        onToggleDiagnostics={() => setIsDiagnosticsOpen((prev) => !prev)}
       />
 
       {/* Microphone Permission Banner if in party and mic is off/denied */}
@@ -807,7 +941,6 @@ export function App() {
           currentUserId={currentUser.participantId}
           isHost={isHost}
           onRemoveParticipant={handleRemoveFromParty}
-          onMuteParticipant={handleMuteParticipant}
           onTransferHost={handleTransferHost}
           onOpenShareModal={() => setIsShareModalOpen(true)}
           hostGraceSeconds={hostGraceSeconds}
@@ -817,6 +950,7 @@ export function App() {
           loungeCount={roomState.lounge.length}
           peerVolumes={peerVolumes}
           peerQualities={peerQualities}
+          disconnectedPeerIds={disconnectedPeerIds}
           onSelectParticipantForAction={setSelectedParticipantForAction}
         />
 
@@ -922,7 +1056,6 @@ export function App() {
           }
           volume={peerVolumes[selectedParticipantForAction.participantId] ?? 100}
           onVolumeChange={handleVolumeChange}
-          onMuteParticipant={handleMuteParticipant}
           onTransferHost={handleTransferHost}
           onRemoveFromParty={handleRemoveFromParty}
           onKickParticipant={handleKickParticipant}
@@ -957,6 +1090,16 @@ export function App() {
         onConfirmEnd={handleEndRoom}
         isLoading={isLoading}
       />
+
+      {/* Discreet Version Tag / WebRTC Diagnostics Trigger */}
+      <button
+        type="button"
+        onClick={() => setIsDiagnosticsOpen(true)}
+        title="STATIC v1.3.1 • WebRTC Diagnostics HUD"
+        className="fixed bottom-1.5 right-3 text-[10px] text-white/20 hover:text-white/50 font-mono tracking-widest select-none z-30 transition-colors cursor-pointer"
+      >
+        v1.3.1
+      </button>
     </div>
   );
 }
