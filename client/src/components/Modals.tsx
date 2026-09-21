@@ -1,16 +1,5 @@
 import React, { useState } from 'react';
-import {
-  X,
-  Copy,
-  Check,
-  Share2,
-  AlertTriangle,
-  Lock,
-  Unlock,
-  Activity,
-  Sparkles,
-  HelpCircle
-} from 'lucide-react';
+import { X, Copy, Check, Share2, Shield, AlertTriangle, Lock, Unlock } from 'lucide-react';
 import { RoomSummary } from '../types/index.js';
 
 interface EndRoomModalProps {
@@ -29,17 +18,15 @@ export const EndRoomModal: React.FC<EndRoomModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim select-none">
-      <div className="w-full max-w-sm bg-surface border border-surface-border rounded-2xl p-6 text-center modal-content-anim shadow-2xl">
-        <div className="w-10 h-10 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center mx-auto mb-3">
-          <AlertTriangle className="w-5 h-5" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+      <div className="w-full max-w-sm max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 text-center modal-content-anim">
+        <div className="w-12 h-12 rounded-xl bg-static-danger/10 border border-static-danger/20 text-static-danger flex items-center justify-center mx-auto mb-4">
+          <AlertTriangle className="w-6 h-6" />
         </div>
 
-        <h3 className="text-base font-medium text-white mb-1.5">
-          End room for everyone?
-        </h3>
-        <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-          All participants will be disconnected immediately and this room will be permanently destroyed.
+        <h3 className="text-lg font-bold text-white mb-2">End this room for everyone?</h3>
+        <p className="text-sm text-static-subtext mb-6">
+          All party and lounge members will be disconnected and the room will be closed permanently.
         </p>
 
         <div className="flex items-center gap-3">
@@ -47,7 +34,7 @@ export const EndRoomModal: React.FC<EndRoomModalProps> = ({
             type="button"
             onClick={onClose}
             disabled={isLoading}
-            className="flex-1 py-2.5 px-4 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-xs font-mono font-medium transition-colors cursor-pointer"
+            className="flex-1 py-3 px-4 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-sm font-medium transition-colors cursor-pointer min-h-[44px]"
           >
             CANCEL
           </button>
@@ -55,7 +42,7 @@ export const EndRoomModal: React.FC<EndRoomModalProps> = ({
             type="button"
             onClick={onConfirmEnd}
             disabled={isLoading}
-            className="flex-1 py-2.5 px-4 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-mono font-semibold transition-colors cursor-pointer disabled:opacity-50"
+            className="flex-1 py-3 px-4 rounded-xl bg-static-danger text-white font-semibold text-sm hover:bg-static-danger/90 transition-colors shadow-lg shadow-static-danger/20 cursor-pointer disabled:opacity-50 min-h-[44px]"
           >
             {isLoading ? 'CLOSING…' : 'END ROOM'}
           </button>
@@ -80,6 +67,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
     try {
       await navigator.clipboard.writeText(roomId);
       setCopiedCode(true);
+      // Automatically close modal after copying so host doesn't have to manually close
       setTimeout(() => {
         setCopiedCode(false);
         onClose();
@@ -94,77 +82,73 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose, roomId 
       try {
         await navigator.share({
           title: 'STATIC Voice Room',
-          text: `Join my STATIC room using ID: ${roomId}`
+          text: `Join my STATIC room using Code: ${roomId}`
         });
-        setTimeout(() => onClose(), 400);
+        setTimeout(() => {
+          onClose();
+        }, 400);
       } catch {}
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim select-none">
-      <div className="w-full max-w-sm bg-surface border border-surface-border rounded-2xl p-6 modal-content-anim shadow-2xl text-left">
-        <div className="flex items-center justify-between pb-3 border-b border-surface-border mb-5">
-          <h3 className="text-sm font-mono tracking-wider uppercase text-white font-medium">
-            Share Room ID
-          </h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 modal-content-anim">
+        <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-5">
+          <div className="flex items-center gap-2">
+            <Share2 className="w-5 h-5 text-static-accent" />
+            <h3 className="text-lg font-bold text-white">SHARE ROOM CODE</h3>
+          </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-1 rounded-lg text-static-muted hover:text-white transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <p className="text-xs text-slate-400 mb-4 leading-relaxed font-light">
-          Share this private ID with people you want in your voice room.
-        </p>
-
-        {/* Room Code Box */}
-        <div
-          onClick={handleCopyCode}
-          className="group relative flex items-center justify-between p-4 rounded-xl bg-surface-card border border-surface-border hover:border-static-accent/60 transition-all cursor-pointer mb-4"
-        >
-          <span className="font-mono text-xl sm:text-2xl tracking-[0.25em] text-white font-semibold">
-            {roomId}
-          </span>
-          <span className="flex items-center gap-1 text-xs font-mono text-slate-400 group-hover:text-white">
-            {copiedCode ? (
-              <>
-                <Check className="w-4 h-4 text-emerald-400" />
-                <span className="text-emerald-400">COPIED</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4" />
-                <span>COPY</span>
-              </>
-            )}
-          </span>
+        {/* Room Code Display Box */}
+        <div className="mb-5">
+          <label className="block text-xs uppercase font-mono tracking-wider text-static-muted mb-2">
+            Room Access Code
+          </label>
+          <div
+            onClick={handleCopyCode}
+            title="Click to copy code"
+            className="flex flex-col items-center justify-center p-5 rounded-2xl bg-surface-card hover:bg-surface-hover border border-surface-border hover:border-static-accent/40 gap-3 text-center cursor-pointer transition-all active:scale-[0.99] group"
+          >
+            <span className="font-mono text-3xl sm:text-4xl tracking-[0.25em] font-extrabold text-static-accent group-hover:scale-105 transition-transform select-all">
+              {roomId}
+            </span>
+            <p className="text-xs text-static-subtext font-light">
+              Tap code or button below to copy.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Action button */}
+        <button
+          type="button"
+          onClick={handleCopyCode}
+          className="w-full py-3.5 px-4 min-h-[44px] rounded-xl bg-static-accent text-background font-mono font-bold text-xs tracking-wider flex items-center justify-center gap-2 hover:bg-static-accent/90 active:scale-[0.99] transition-all shadow-md cursor-pointer mb-3"
+        >
+          {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+          <span>{copiedCode ? 'CODE COPIED TO CLIPBOARD' : 'COPY ROOM CODE'}</span>
+        </button>
+
+        {/* Mobile Web Share API option */}
+        {typeof navigator !== 'undefined' && 'share' in navigator && (
           <button
             type="button"
-            onClick={handleCopyCode}
-            className="flex-1 py-2.5 px-4 rounded-xl bg-white text-black font-mono font-semibold text-xs tracking-wider hover:bg-white/90 transition-colors cursor-pointer"
+            onClick={handleNativeShare}
+            className="w-full py-3 px-4 min-h-[44px] rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white text-xs font-mono font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
-            {copiedCode ? 'COPIED TO CLIPBOARD' : 'COPY ROOM ID'}
+            <Share2 className="w-3.5 h-3.5 text-static-accent" />
+            <span>SHARE CODE VIA APPS</span>
           </button>
-
-          {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
-            <button
-              type="button"
-              onClick={handleNativeShare}
-              title="Share via device"
-              className="p-2.5 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-white transition-colors cursor-pointer"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
@@ -176,7 +160,6 @@ interface RoomSettingsModalProps {
   room: RoomSummary;
   onToggleInvitations: (open: boolean) => void;
   onPromptEndRoom: () => void;
-  onToggleDiagnostics?: () => void;
 }
 
 export const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
@@ -184,178 +167,96 @@ export const RoomSettingsModal: React.FC<RoomSettingsModalProps> = ({
   onClose,
   room,
   onToggleInvitations,
-  onPromptEndRoom,
-  onToggleDiagnostics
+  onPromptEndRoom
 }) => {
-  const [activeCategory, setActiveCategory] = useState<'ROOM' | 'AUDIO' | 'APPEARANCE' | 'HELP'>('ROOM');
-
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim select-none">
-      <div className="w-full max-w-md bg-surface border border-surface-border rounded-2xl p-6 shadow-2xl modal-content-anim text-left">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-surface-border mb-5">
-          <h3 className="text-sm font-mono tracking-widest uppercase text-white font-medium">
-            Settings
-          </h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md modal-backdrop-anim">
+      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl bg-surface border border-surface-border shadow-2xl p-5 sm:p-6 modal-content-anim">
+        <div className="flex items-center justify-between pb-4 border-b border-surface-border mb-5">
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-static-accent" />
+            <h3 className="text-lg font-bold text-white">ROOM SETTINGS</h3>
+          </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-1 rounded-lg text-static-muted hover:text-white transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Categories Bar: Room, Audio, Appearance, Help */}
-        <div className="flex items-center gap-4 border-b border-surface-border pb-3 mb-5 overflow-x-auto no-scrollbar">
-          {(['ROOM', 'AUDIO', 'APPEARANCE', 'HELP'] as const).map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setActiveCategory(cat)}
-              className={`font-mono text-xs tracking-wider uppercase transition-colors cursor-pointer shrink-0 ${
-                activeCategory === cat
-                  ? 'text-white font-semibold border-b-2 border-static-accent pb-1 -mb-[14px]'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
+        {/* Invitations Control */}
+        <div className="p-4 rounded-xl bg-surface-card border border-surface-border mb-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <span className="block text-sm font-semibold text-white">Room Invitations</span>
+            <span className="block text-xs text-static-muted">
+              {room.invitationsOpen
+                ? 'Anyone with the link can join the Lounge'
+                : 'New joins are blocked until reopened'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onToggleInvitations(!room.invitationsOpen)}
+            className={`px-3.5 py-2 min-h-[40px] rounded-xl text-xs font-mono font-semibold tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 ${
+              room.invitationsOpen
+                ? 'bg-static-accent/15 text-static-accent border border-static-accent/30 hover:bg-static-accent/25'
+                : 'bg-static-warning/15 text-static-warning border border-static-warning/30 hover:bg-static-warning/25'
+            }`}
+          >
+            {room.invitationsOpen ? (
+              <>
+                <Unlock className="w-3.5 h-3.5" />
+                <span>OPEN</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-3.5 h-3.5" />
+                <span>CLOSED</span>
+              </>
+            )}
+          </button>
         </div>
 
-        {/* Tab 1: ROOM */}
-        {activeCategory === 'ROOM' && (
-          <div className="space-y-4">
-            {/* Invitations */}
-            <div className="p-4 rounded-xl bg-surface-card border border-surface-border flex items-center justify-between gap-3">
-              <div>
-                <span className="block text-sm font-medium text-white">Invitations</span>
-                <span className="block text-xs text-slate-400">
-                  {room.invitationsOpen ? 'New guests can join lounge' : 'New joins are currently blocked'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => onToggleInvitations(!room.invitationsOpen)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  room.invitationsOpen
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                }`}
-              >
-                {room.invitationsOpen ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                <span>{room.invitationsOpen ? 'OPEN' : 'PAUSED'}</span>
-              </button>
-            </div>
-
-            {/* Capacities */}
-            <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-              <div className="p-3 rounded-xl bg-surface-card border border-surface-border">
-                <span className="text-slate-500 block">PARTY</span>
-                <span className="text-white text-base font-semibold mt-1 block">
-                  {room.partyCount} / {room.partyCapacity}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl bg-surface-card border border-surface-border">
-                <span className="text-slate-500 block">LOUNGE</span>
-                <span className="text-white text-base font-semibold mt-1 block">
-                  {room.loungeCount} / {room.loungeCapacity}
-                </span>
-              </div>
-            </div>
-
-            {/* End Room */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onPromptEndRoom();
-                }}
-                className="w-full py-2.5 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-rose-400 text-xs font-mono tracking-wider font-semibold transition-colors cursor-pointer"
-              >
-                END ROOM FOR EVERYONE
-              </button>
-            </div>
+        {/* Live Counts */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <div className="p-3.5 rounded-xl bg-surface-card border border-surface-border">
+            <span className="block text-[11px] font-mono text-static-muted uppercase">
+              Party Members
+            </span>
+            <span className="text-xl font-mono font-bold text-white">
+              {room.partyCount} / {room.partyCapacity}
+            </span>
           </div>
-        )}
 
-        {/* Tab 2: AUDIO */}
-        {activeCategory === 'AUDIO' && (
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-surface-card border border-surface-border">
-              <div className="flex items-center gap-2 mb-2">
-                <Activity className="w-4 h-4 text-static-accentLight" />
-                <span className="text-sm font-medium text-white">Voice Pipeline</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed font-light">
-                High-definition Opus audio with real-time Voice Activity Detection (VAD) and hardware echo cancellation.
-              </p>
-            </div>
-
-            {onToggleDiagnostics && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onToggleDiagnostics();
-                }}
-                className="w-full flex items-center justify-between p-3.5 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border text-left cursor-pointer transition-colors"
-              >
-                <div>
-                  <span className="block text-xs font-mono font-semibold text-white">
-                    WebRTC Diagnostics HUD
-                  </span>
-                  <span className="block text-xs text-slate-500 mt-0.5">
-                    Inspect peer packet loss, latency and jitter
-                  </span>
-                </div>
-                <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-1 rounded">
-                  Ctrl+Shift+D
-                </span>
-              </button>
-            )}
+          <div className="p-3.5 rounded-xl bg-surface-card border border-surface-border">
+            <span className="block text-[11px] font-mono text-static-muted uppercase">
+              Lounge Guests
+            </span>
+            <span className="text-xl font-mono font-bold text-white">
+              {room.loungeCount} / {room.loungeCapacity}
+            </span>
           </div>
-        )}
+        </div>
 
-        {/* Tab 3: APPEARANCE */}
-        {activeCategory === 'APPEARANCE' && (
-          <div className="space-y-3 text-xs">
-            <div className="p-4 rounded-xl bg-surface-card border border-surface-border">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-4 h-4 text-static-accentLight" />
-                <span className="text-sm font-medium text-white">Atmospheric Dark Foundation</span>
-              </div>
-              <p className="text-slate-400 leading-relaxed font-light">
-                Near-black deep blue-black (#060709) with restrained electric violet accents. Designed for zero eye strain during prolonged conversations.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 4: HELP */}
-        {activeCategory === 'HELP' && (
-          <div className="space-y-3 text-xs leading-relaxed">
-            <div className="p-4 rounded-xl bg-surface-card border border-surface-border">
-              <div className="flex items-center gap-2 mb-2">
-                <HelpCircle className="w-4 h-4 text-static-accentLight" />
-                <span className="text-sm font-medium text-white">Voice, without the noise.</span>
-              </div>
-              <p className="text-slate-400 font-light mb-3">
-                STATIC provides private, direct WebRTC voice communications without accounts, cookies, downloads, or telemetry tracking.
-              </p>
-              <div className="text-[11px] font-mono text-slate-500 space-y-1">
-                <p>&bull; No avatars: Name + Sound represents presence</p>
-                <p>&bull; End-to-end encrypted peer audio streaming</p>
-                <p>&bull; Zero recordings or transcripts stored</p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Destructive Action: End Room */}
+        <div className="pt-4 border-t border-surface-border">
+          <button
+            type="button"
+            onClick={() => {
+              onClose();
+              onPromptEndRoom();
+            }}
+            className="w-full py-3 px-4 min-h-[44px] rounded-xl bg-static-danger/10 hover:bg-static-danger/20 border border-static-danger/30 text-static-danger text-sm font-semibold tracking-wider font-mono transition-colors cursor-pointer"
+          >
+            END ROOM FOR EVERYONE
+          </button>
+        </div>
       </div>
     </div>
   );

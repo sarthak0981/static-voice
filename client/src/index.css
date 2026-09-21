@@ -8,8 +8,8 @@
   }
 
   body {
-    background-color: #060709;
-    color: #F1F5F9;
+    background-color: #07080B;
+    color: #E6EDF3;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     user-select: none;
     -webkit-user-select: none;
@@ -21,59 +21,86 @@
 
   /* Custom subtle scrollbar */
   ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.12);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.2);
   }
 }
 
-/* Atmospheric dark background with quiet violet/indigo highlights */
-.bg-static-atmosphere {
-  background-color: #060709;
-  background-image: 
-    radial-gradient(circle at 50% 0%, rgba(139, 92, 246, 0.04) 0%, transparent 55%),
-    radial-gradient(circle at 10% 85%, rgba(99, 102, 241, 0.02) 0%, transparent 45%),
-    radial-gradient(circle at 90% 20%, rgba(56, 189, 248, 0.015) 0%, transparent 40%);
-}
-
-/* Minimal atmospheric particle noise */
+/* Futuristic background static grain */
 .bg-static-noise {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 0);
-  background-size: 32px 32px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 0);
+  background-size: 24px 24px;
 }
 
 /* Glass panel */
 .glass-panel {
-  background: rgba(11, 13, 20, 0.82);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(18, 20, 28, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-/* Active speaking glowing name & presence */
+/* Active speaking glowing ring */
 .speaking-glow {
-  text-shadow: 0 0 16px rgba(139, 92, 246, 0.6), 0 0 32px rgba(139, 92, 246, 0.25);
+  box-shadow: 0 0 0 2px rgba(0, 229, 153, 0.9), 0 0 24px rgba(0, 229, 153, 0.35);
 }
 
 /* Subtle glow for accents */
 .accent-glow {
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.25);
+  box-shadow: 0 0 16px rgba(0, 229, 153, 0.25);
+}
+
+/* Zen Lounge Breathing Animations */
+@keyframes zenBreathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.55;
+    box-shadow: 0 0 30px rgba(0, 229, 153, 0.15), 0 0 60px rgba(0, 229, 153, 0.05);
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.85;
+    box-shadow: 0 0 50px rgba(0, 229, 153, 0.3), 0 0 90px rgba(0, 229, 153, 0.12);
+  }
+}
+
+@keyframes zenRingExpand {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.2;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.animate-zen-breathe {
+  animation: zenBreathe 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-zen-ring {
+  animation: zenRingExpand 7s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 /* Floating Host Toast Animation */
 @keyframes floatToastIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -12px) scale(0.97);
+    transform: translate(-50%, -16px) scale(0.96);
   }
   to {
     opacity: 1;
@@ -82,7 +109,7 @@
 }
 
 .animate-toast-in {
-  animation: floatToastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: floatToastIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Universal Consistent Modal Backdrop & Content Animation */
@@ -98,7 +125,7 @@
 @keyframes modalContentPopIn {
   from {
     opacity: 0;
-    transform: scale(0.97) translateY(6px);
+    transform: scale(0.96) translateY(8px);
   }
   to {
     opacity: 1;
@@ -107,18 +134,18 @@
 }
 
 .modal-backdrop-anim {
-  animation: modalBackdropIn 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: modalBackdropIn 250ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .modal-content-anim {
-  animation: modalContentPopIn 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: modalContentPopIn 250ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* 0.25-second Subtle UI Screen Fade Transition */
+/* 0.3-second Subtle UI Screen Fade Transition */
 @keyframes uiFadeIn {
   from {
     opacity: 0;
-    transform: scale(0.995);
+    transform: scale(0.99);
   }
   to {
     opacity: 1;
@@ -127,27 +154,40 @@
 }
 
 .ui-fade-transition {
-  animation: uiFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: uiFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Tactile Premium Button Micro-Interactions */
 button,
 [role="button"] {
-  transition: all 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 button:active,
 [role="button"]:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
-/* Floating Bottom Voice Controls Notch HUD */
+/* Floating Bottom Notch HUD Styling */
 .notch-hud {
-  background: rgba(11, 13, 20, 0.92);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  background: rgba(18, 20, 28, 0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Drag-and-drop Card Indicators */
+.card-dragging {
+  opacity: 0.35 !important;
+  transform: scale(0.97) !important;
+  border-style: dashed !important;
+}
+
+.card-drop-target {
+  border-color: rgba(0, 229, 153, 0.8) !important;
+  box-shadow: 0 0 24px rgba(0, 229, 153, 0.25) !important;
+  transform: scale(1.02);
 }
 
 /* Mobile Safe Area and Viewport Helpers */

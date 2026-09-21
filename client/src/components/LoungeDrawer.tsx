@@ -32,76 +32,79 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
   const [isConfirmClearOpen, setIsConfirmClearOpen] = useState(false);
   const isPartyFull = partyCount >= 8;
 
-  // Only host is permitted to view lounge drawer
+  // Only the host is permitted to view the lounge drawer or waiting guests
   if (!isHost) return null;
 
   const content = (
-    <div className="flex flex-col h-full select-none">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-surface-border shrink-0">
+      <div className="flex items-center justify-between p-4 sm:p-5 border-b border-surface-border shrink-0">
         <div className="flex items-baseline gap-2.5">
-          <h3 className="text-sm font-mono tracking-wider uppercase text-white font-medium flex items-center gap-2">
-            <Users className="w-3.5 h-3.5 text-slate-400" />
-            Lounge
+          <h3 className="text-base sm:text-lg font-bold tracking-tight text-white font-sans flex items-center gap-2">
+            <Users className="w-4 h-4 text-static-subtext" />
+            LOUNGE
           </h3>
-          <span className="text-xs font-mono text-slate-500">
+          <span className="text-xs sm:text-sm font-mono font-semibold text-static-subtext tracking-wider">
             {participants.length} / 50
           </span>
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Host Master Control: Clear Lounge */}
           {isHost && participants.length > 0 && (
             <button
               type="button"
               onClick={() => setIsConfirmClearOpen(true)}
-              title="Clear all waiting guests"
-              className="flex items-center gap-1 px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[11px] font-mono transition-colors cursor-pointer"
+              title="Clear all waiting guests from Lounge"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-static-danger/10 hover:bg-static-danger/20 border border-static-danger/30 text-static-danger text-[11px] font-mono font-semibold tracking-wider transition-colors cursor-pointer"
             >
-              <Trash2 className="w-3 h-3" />
+              <Trash2 className="w-3.5 h-3.5" />
               <span>CLEAR</span>
             </button>
           )}
 
+          {/* Internal Integrated Hide Button for Host */}
           {onToggleCollapse && (
             <button
               type="button"
               onClick={onToggleCollapse}
-              title="Hide Lounge"
+              title="Hide Lounge area so the whole party is visible"
               aria-label="Hide Lounge"
-              className="hidden lg:flex items-center gap-1 px-2 py-1 rounded bg-surface-card hover:bg-surface-hover text-slate-400 hover:text-white text-[11px] font-mono transition-colors cursor-pointer"
+              className="hidden lg:flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface-card hover:bg-surface-hover border border-surface-border text-[#8A99AD] hover:text-white text-[11px] font-mono transition-colors cursor-pointer"
             >
               <PanelRightClose className="w-3.5 h-3.5" />
               <span>HIDE</span>
             </button>
           )}
 
+          {/* Mobile close button */}
           <button
             type="button"
             onClick={onCloseMobile}
             aria-label="Close Lounge"
-            className="lg:hidden p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="lg:hidden p-1.5 rounded-lg text-static-muted hover:text-white transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
       </div>
 
       {/* Confirmation Banner for Clear Lounge */}
       {isConfirmClearOpen && (
-        <div className="p-3 bg-rose-500/15 border-b border-rose-500/30">
+        <div className="p-3 bg-static-danger/15 border-b border-static-danger/30 animate-in fade-in duration-150">
           <div className="flex items-start gap-2 mb-2 text-left">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="w-4 h-4 text-static-danger shrink-0 mt-0.5" />
             <p className="text-xs text-white">
-              Remove all <span className="font-bold">{participants.length}</span> waiting guests from the lounge?
+              Remove all <span className="font-bold">{participants.length}</span> waiting guests from the lounge? Active party members will not be affected.
             </p>
           </div>
           <div className="flex items-center gap-2 justify-end">
             <button
               type="button"
               onClick={() => setIsConfirmClearOpen(false)}
-              className="px-2.5 py-1 rounded bg-surface-card text-white text-[11px] font-mono cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-surface-card hover:bg-surface-elevated text-white text-[11px] font-mono cursor-pointer"
             >
-              Cancel
+              CANCEL
             </button>
             <button
               type="button"
@@ -109,20 +112,21 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
                 setIsConfirmClearOpen(false);
                 onClearLounge();
               }}
-              className="px-2.5 py-1 rounded bg-rose-500 hover:bg-rose-600 text-white text-[11px] font-mono font-semibold cursor-pointer"
+              className="px-2.5 py-1 rounded-md bg-static-danger hover:bg-static-danger/90 text-white text-[11px] font-mono font-bold cursor-pointer"
             >
-              Clear
+              CLEAR LOUNGE
             </button>
           </div>
         </div>
       )}
 
-      {/* Waiting List (NO AVATARS) */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+      {/* Waiting List */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-2">
         {participants.length === 0 ? (
-          <div className="h-40 flex flex-col items-center justify-center text-center p-4 text-slate-500">
-            <Clock className="w-6 h-6 opacity-40 mb-2" />
-            <p className="text-xs font-mono">The lounge is quiet.</p>
+          <div className="h-48 flex flex-col items-center justify-center text-center p-4">
+            <Clock className="w-8 h-8 text-static-muted/40 mb-2" />
+            <p className="text-sm text-static-muted font-medium">The lounge is quiet.</p>
+            <p className="text-xs text-static-muted/60 mt-1">Waiting guests will appear here.</p>
           </div>
         ) : (
           participants.map((user) => {
@@ -131,75 +135,89 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
             return (
               <div
                 key={user.participantId}
-                className="flex items-center justify-between p-3 rounded-xl bg-surface-card border border-surface-border hover:border-surface-border-strong transition-colors"
+                className="flex items-center justify-between p-3 rounded-xl bg-surface-card border border-surface-border hover:border-surface-border/80 transition-colors"
               >
-                <div className="min-w-0 pr-2">
-                  <span className="text-xs sm:text-sm font-medium text-white truncate block">
-                    {user.displayName} {isLocal && '(You)'}
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-500">
-                    Waiting
-                  </span>
+                {/* User Info */}
+                <div className="flex items-center gap-3 min-w-0 pr-2">
+                  <div className="w-8 h-8 rounded-lg bg-surface-elevated flex items-center justify-center text-xs font-bold font-mono text-white shrink-0">
+                    {user.displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-xs sm:text-sm font-medium text-white truncate">
+                      {user.displayName} {isLocal && '(You)'}
+                    </span>
+                    <span className="text-[10px] font-mono text-static-muted">
+                      Waiting
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => onAdmitParticipant(user.participantId)}
-                    disabled={isPartyFull}
-                    title={isPartyFull ? 'The party is full' : 'Admit to Party'}
-                    className="px-2.5 py-1 rounded bg-white/10 hover:bg-white text-white hover:text-black text-[11px] font-mono font-semibold transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 shrink-0"
-                  >
-                    <UserCheck className="w-3 h-3" />
-                    <span>ADMIT</span>
-                  </button>
+                {/* Host Actions: COME ON IN and KICK */}
+                {isHost && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onAdmitParticipant(user.participantId)}
+                      disabled={isPartyFull}
+                      title={isPartyFull ? 'The party is packed! 🎉' : 'Admit to Party'}
+                      className="px-2 sm:px-2.5 py-1.5 rounded-lg bg-static-accent/15 hover:bg-static-accent text-static-accent hover:text-background border border-static-accent/30 text-[11px] font-mono font-semibold tracking-wider transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 shrink-0"
+                    >
+                      <UserCheck className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">COME ON IN</span>
+                      <span className="sm:hidden">ADMIT</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => onKickParticipant(user.participantId)}
-                    title="Kick from Lounge"
-                    aria-label={`Kick ${user.displayName}`}
-                    className="p-1 rounded text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
-                  >
-                    <UserX className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => onKickParticipant(user.participantId)}
+                      title="Kick from Lounge"
+                      aria-label={`Kick ${user.displayName}`}
+                      className="p-1.5 rounded-lg text-static-muted hover:text-static-danger hover:bg-static-danger/10 transition-colors cursor-pointer"
+                    >
+                      <UserX className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
         )}
       </div>
-    </div>
-  );
 
-  // Desktop Side Panel
-  const desktopDrawer = (
-    <aside
-      className={`hidden lg:flex flex-col bg-surface/90 border-l border-surface-border transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden shrink-0 z-10 ${
-        isCollapsed ? 'w-0 opacity-0 border-l-0' : 'w-72 xl:w-80 opacity-100'
-      }`}
-    >
-      {content}
-    </aside>
-  );
-
-  // Mobile Bottom Sheet
-  const mobileDrawer = isOpenMobile && (
-    <div className="fixed inset-0 z-50 flex items-end lg:hidden select-none">
-      <div
-        className="fixed inset-0 bg-black/70 backdrop-blur-xs modal-backdrop-anim"
-        onClick={onCloseMobile}
-      />
-      <div className="relative w-full max-h-[75dvh] bg-surface border-t border-surface-border rounded-t-3xl overflow-hidden modal-content-anim shadow-2xl flex flex-col pb-[max(1rem,env(safe-area-inset-bottom))]">
-        {content}
-      </div>
+      {/* Footer Info: Show capacity notice only when party is full */}
+      {isPartyFull && (
+        <div className="p-3 border-t border-surface-border/60 text-center text-[11px] font-mono text-amber-400 shrink-0">
+          Party is at maximum capacity (8/8)
+        </div>
+      )}
     </div>
   );
 
   return (
     <>
-      {desktopDrawer}
-      {mobileDrawer}
+      <aside
+        className={`hidden lg:flex flex-col border-surface-border bg-surface/50 backdrop-blur-sm shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden ${
+          isCollapsed
+            ? 'w-0 border-l-0 opacity-0 pointer-events-none'
+            : 'w-80 xl:w-96 border-l opacity-100'
+        }`}
+      >
+        <div className="w-80 xl:w-96 h-full flex flex-col shrink-0">
+          {content}
+        </div>
+      </aside>
+
+      {isOpenMobile && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div
+            className="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity"
+            onClick={onCloseMobile}
+          />
+          <div className="relative ml-auto w-full max-w-xs sm:max-w-sm h-[100dvh] bg-surface border-l border-surface-border shadow-2xl flex flex-col z-10 animate-in slide-in-from-right duration-200 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+            {content}
+          </div>
+        </div>
+      )}
     </>
   );
 };

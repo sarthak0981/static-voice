@@ -30,8 +30,6 @@ import {
   RoomSettingsModal
 } from './components/Modals.js';
 import { HostTransferModal } from './components/HostTransferModal.js';
-import { HostControlsSheet } from './components/HostControlsSheet.js';
-import { HostActionSheet } from './components/HostActionSheet.js';
 import { PartyChat } from './components/PartyChat.js';
 import {
   QueueScreen,
@@ -112,8 +110,6 @@ export function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
   const [isEndRoomModalOpen, setIsEndRoomModalOpen] = useState<boolean>(false);
   const [isHostTransferModalOpen, setIsHostTransferModalOpen] = useState<boolean>(false);
-  const [isHostControlsOpen, setIsHostControlsOpen] = useState<boolean>(false);
-  const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
   const [isMobileLoungeOpen, setIsMobileLoungeOpen] = useState<boolean>(false);
   const [isLoungeCollapsed, setIsLoungeCollapsed] = useState<boolean>(false);
 
@@ -1061,15 +1057,10 @@ export function App() {
         <ZenLoungeView
           displayName={currentUser.displayName}
           partyName={roomState.room.roomName || 'Party'}
-          roomCode={roomState.room.roomId}
-          participants={roomState.lounge}
-          currentUserId={currentUser.participantId}
-          isHost={isHost}
+          roomCode={isHost ? roomState.room.roomId : ''}
           microphoneState={microphoneState}
           onEnableMic={handleToggleMicrophone}
           onLeaveRoom={handleLeaveClick}
-          onAdmitParticipant={handleAdmitParticipant}
-          onClearLounge={handleClearLounge}
         />
       </div>
     );
@@ -1078,14 +1069,14 @@ export function App() {
   const isLoungeVisible = (typeof window !== 'undefined' && window.innerWidth < 1024) ? isMobileLoungeOpen : !isLoungeCollapsed;
 
   return (
-    <div className="ui-fade-transition flex flex-col h-[100dvh] min-h-[100dvh] w-screen overflow-hidden bg-static-atmosphere bg-static-noise text-static-text font-sans">
+    <div className="ui-fade-transition flex flex-col h-[100dvh] min-h-[100dvh] w-screen overflow-hidden bg-background bg-static-noise text-static-text font-sans">
       {/* Unified FIFO Top Notification Capsule */}
       <NotificationCapsule
         queue={notificationQueue}
         onDismissCurrent={handleDismissNotification}
       />
 
-      {/* Top Bar Header */}
+      {/* Top Bar Notification Strip (Code removed, reserved for alerts/status) */}
       <TopBar
         roomId={roomState.room.roomId}
         roomName={roomState.room.roomName}
@@ -1093,8 +1084,6 @@ export function App() {
         invitationsOpen={roomState.room.invitationsOpen}
         connectionStatus={connectionStatus}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-        partyCount={roomState.party.length}
-        partyCapacity={roomState.room.partyCapacity || 8}
       />
 
       {/* Microphone Permission Banner if in party and mic is off/denied */}
@@ -1124,7 +1113,6 @@ export function App() {
           peerVolumes={peerVolumes}
           peerQualities={peerQualities}
           disconnectedPeerIds={disconnectedPeerIds}
-          onSelectParticipant={(p) => setSelectedParticipant(p)}
         />
 
         {isHost && (
@@ -1147,17 +1135,22 @@ export function App() {
         )}
       </main>
 
-      {/* Floating Bottom Voice Controls */}
+      {/* Floating Bottom Notch HUD with Smartly Integrated Controls */}
       <ControlBar
         microphoneState={microphoneState}
         isInParty={isInParty}
         isHost={isHost}
         loungeCount={isHost ? roomState.lounge.length : 0}
+        isLoungeCollapsed={!isLoungeVisible}
+        onToggleLoungeCollapse={handleToggleLounge}
+        invitationsOpen={roomState.room.invitationsOpen}
+        onToggleInvitations={handleToggleInvitations}
         unreadChatCount={unreadChatCount}
         latestChatMessage={latestChatMessage}
         isChatOpen={isChatOpen}
         onToggleMicrophone={handleToggleMicrophone}
         onLeaveRoom={handleLeaveClick}
+        onPromptEndRoom={() => setIsEndRoomModalOpen(true)}
         onToggleChat={() => {
           setIsChatOpen(!isChatOpen);
           if (!isChatOpen) {
@@ -1165,7 +1158,7 @@ export function App() {
             setLatestChatMessage(null);
           }
         }}
-        onOpenHostControls={() => setIsHostControlsOpen(true)}
+        onOpenShareModal={() => setIsShareModalOpen(true)}
       />
 
       {/* In-Party Keyboard Text Chat */}
@@ -1178,39 +1171,6 @@ export function App() {
           currentUserId={currentUser.participantId}
         />
       )}
-
-      {/* Host Controls Floating Sheet (Screen 5) */}
-      {isHost && (
-        <HostControlsSheet
-          isOpen={isHostControlsOpen}
-          onClose={() => setIsHostControlsOpen(false)}
-          onOpenShareModal={() => setIsShareModalOpen(true)}
-          invitationsOpen={roomState.room.invitationsOpen}
-          onToggleInvitations={handleToggleInvitations}
-          loungeCount={roomState.lounge.length}
-          onClearLounge={handleClearLounge}
-          onToggleLoungeDrawer={handleToggleLounge}
-          onOpenHostTransfer={() => setIsHostTransferModalOpen(true)}
-          onPromptEndRoom={() => setIsEndRoomModalOpen(true)}
-        />
-      )}
-
-      {/* Participant Context Menu Sheet (Screen 6) */}
-      <HostActionSheet
-        participant={selectedParticipant}
-        isOpen={Boolean(selectedParticipant)}
-        onClose={() => setSelectedParticipant(null)}
-        volume={selectedParticipant ? (peerVolumes[selectedParticipant.participantId] ?? 100) : 100}
-        isCurrentUserHost={isHost}
-        connectionQuality={
-          selectedParticipant
-            ? (peerQualities[selectedParticipant.participantId] || peerQualities[selectedParticipant.socketId])
-            : undefined
-        }
-        onVolumeChange={handleVolumeChange}
-        onTransferHost={handleTransferHost}
-        onKickParticipant={handleKickParticipant}
-      />
 
       {/* Modals */}
       <ShareModal
@@ -1225,7 +1185,6 @@ export function App() {
         room={roomState.room}
         onToggleInvitations={handleToggleInvitations}
         onPromptEndRoom={() => setIsEndRoomModalOpen(true)}
-        onToggleDiagnostics={() => setIsDiagnosticsOpen(true)}
       />
 
       <HostTransferModal
