@@ -1,8 +1,10 @@
 /**
- * Centralized validation and sanitization for STATIC voice platform
+ * Centralized validation, sanitization, and safety checks for STATIC voice platform
  */
+import { evaluateTextSafety, SafetyEvaluation } from './safety.js';
 
 export const MAX_USERNAME_LENGTH = 24;
+export const MAX_ROOM_NAME_LENGTH = 40;
 export const USERNAME_REGEX = /^[a-zA-Z0-9_\- ]+$/;
 export const ROOM_CODE_REGEX = /^[2-9A-Z]{5,8}$/;
 
@@ -10,6 +12,7 @@ export interface ValidationResult {
   isValid: boolean;
   normalized: string;
   error?: string;
+  safety?: SafetyEvaluation;
 }
 
 export function validateAndSanitizeUsername(rawName: string): ValidationResult {
@@ -43,6 +46,54 @@ export function validateAndSanitizeUsername(rawName: string): ValidationResult {
   // Reject control characters or zero-width spaces
   if (/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/.test(normalized)) {
     return { isValid: false, normalized, error: 'Unsupported characters detected.' };
+  }
+
+  // Community Safety Guidelines verification
+  const safety = evaluateTextSafety(normalized, 'username');
+  if (!safety.isSafe) {
+    return {
+      isValid: false,
+      normalized,
+      error: safety.policyViolation || 'Username violates Community Safety Guidelines.',
+      safety
+    };
+  }
+
+  return { isValid: true, normalized };
+}
+
+export function validateAndSanitizeRoomName(rawName?: string): ValidationResult {
+  if (!rawName || typeof rawName !== 'string') {
+    return { isValid: true, normalized: 'STATIC Party' };
+  }
+
+  const normalized = rawName.trim().replace(/\s+/g, ' ');
+
+  if (normalized.length === 0) {
+    return { isValid: true, normalized: 'STATIC Party' };
+  }
+
+  if (normalized.length > MAX_ROOM_NAME_LENGTH) {
+    return {
+      isValid: false,
+      normalized,
+      error: `Room name must be ${MAX_ROOM_NAME_LENGTH} characters or less.`
+    };
+  }
+
+  if (/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/.test(normalized)) {
+    return { isValid: false, normalized, error: 'Unsupported characters detected.' };
+  }
+
+  // Community Safety Guidelines verification
+  const safety = evaluateTextSafety(normalized, 'room_name');
+  if (!safety.isSafe) {
+    return {
+      isValid: false,
+      normalized,
+      error: safety.policyViolation || 'Room name violates Community Safety Guidelines.',
+      safety
+    };
   }
 
   return { isValid: true, normalized };

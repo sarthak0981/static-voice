@@ -10,6 +10,7 @@ import {
 } from './types.js';
 import {
   validateAndSanitizeUsername,
+  validateAndSanitizeRoomName,
   validateAndSanitizeRoomCode
 } from './validators.js';
 
@@ -94,11 +95,16 @@ export class RoomManager {
       throw new Error(validation.error || 'Invalid username');
     }
 
+    const roomNameValidation = validateAndSanitizeRoomName(roomName);
+    if (!roomNameValidation.isValid) {
+      throw new Error(roomNameValidation.error || 'Invalid room name');
+    }
+
     const roomId = this.generateRoomId();
     const participantId = this.generateParticipantId();
     const sessionToken = existingToken || this.generateSessionToken();
     const now = Date.now();
-    const cleanRoomName = roomName?.trim() || 'STATIC Party';
+    const cleanRoomName = roomNameValidation.normalized;
 
     const hostParticipant: Participant = {
       participantId,

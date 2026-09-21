@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Radio, ArrowRight, Sparkles, AlertCircle, Users, X, Loader2 } from 'lucide-react';
+import { Radio, ArrowRight, Sparkles, AlertCircle, Users, X, Loader2, ShieldCheck } from 'lucide-react';
 import {
   validateUsername,
+  validateRoomName,
   validateRoomCode,
-  MAX_USERNAME_LENGTH
+  MAX_USERNAME_LENGTH,
+  MAX_ROOM_NAME_LENGTH
 } from '../lib/validation.js';
 
 export interface RecentRoomInfo {
@@ -38,6 +40,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   // Inline Validation States
   const [nameError, setNameError] = useState<string | null>(null);
+  const [roomNameError, setRoomNameError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [isValidatingCode, setIsValidatingCode] = useState(false);
 
@@ -88,6 +91,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     }
   }, [initialRoomId]);
 
+  // Live Room Name Input Handler (Safety and length validated)
+  const handleRoomNameChange = (val: string) => {
+    const sliced = val.slice(0, MAX_ROOM_NAME_LENGTH);
+    setRoomName(sliced);
+
+    if (sliced.trim().length > 0) {
+      const result = validateRoomName(sliced);
+      setRoomNameError(result.isValid ? null : result.error || null);
+    } else {
+      setRoomNameError(null);
+    }
+  };
+
   // Live Username Input Handler
   const handleNameChange = (val: string) => {
     // Restrict input length to max 24 chars
@@ -118,6 +134,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const handleOpenCreate = () => {
     setNameError(null);
+    setRoomNameError(null);
     setIsCreateModalOpen(true);
   };
 
@@ -171,13 +188,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     e.preventDefault();
     if (isLoading) return;
 
+    const roomValidation = validateRoomName(roomName);
+    if (!roomValidation.isValid) {
+      setRoomNameError(roomValidation.error || 'Please enter a valid room name.');
+      return;
+    }
+
     const nameValidation = validateUsername(displayName);
     if (!nameValidation.isValid) {
       setNameError(nameValidation.error || 'Please enter a valid username.');
       return;
     }
 
-    await onCreateRoom(roomName.trim(), nameValidation.normalized);
+    await onCreateRoom(roomValidation.normalized, nameValidation.normalized);
   };
 
   const handleConfirmJoin = async (e: React.FormEvent) => {
@@ -376,17 +399,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
             <form onSubmit={handleConfirmCreate} className="space-y-4">
               <div>
-                <label className="block text-xs uppercase font-mono tracking-wider text-static-muted mb-1.5">
-                  Room Name <span className="text-static-muted/70">(Optional)</span>
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs uppercase font-mono tracking-wider text-static-muted">
+                    Room Name <span className="text-static-muted/70">(Optional)</span>
+                  </label>
+                  <span className="text-[11px] font-mono text-static-muted">
+                    {roomName.length}/{MAX_ROOM_NAME_LENGTH}
+                  </span>
+                </div>
                 <input
                   type="text"
                   placeholder="e.g. Chill Voice Hub, Apex Duo, Study Sync"
                   value={roomName}
-                  onChange={(e) => setRoomName(e.target.value)}
-                  maxLength={40}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-surface-card border border-surface-border text-white placeholder-static-muted/50 focus:outline-none focus:border-static-accent text-base sm:text-sm"
+                  onChange={(e) => handleRoomNameChange(e.target.value)}
+                  maxLength={MAX_ROOM_NAME_LENGTH}
+                  className={`w-full px-3.5 py-2.5 rounded-xl bg-surface-card border text-white placeholder-static-muted/50 focus:outline-none text-base sm:text-sm transition-colors ${
+                    roomNameError
+                      ? 'border-static-danger focus:border-static-danger'
+                      : 'border-surface-border focus:border-static-accent'
+                  }`}
                 />
+                {roomNameError && (
+                  <p className="text-xs text-static-danger mt-1.5 flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{roomNameError}</span>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -444,11 +482,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={!displayName.trim() || Boolean(nameError) || isLoading}
+                  disabled={!displayName.trim() || Boolean(nameError) || Boolean(roomNameError) || isLoading}
                   className="flex-1 py-3 px-4 rounded-xl bg-static-accent text-background font-mono font-bold text-xs hover:bg-static-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 min-h-[44px]"
                 >
                   {isLoading ? 'Preparing audio…' : 'Create Room'}
                 </button>
+              </div>
+
+              <div className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-static-muted/80 font-mono">
+                <ShieldCheck className="w-3.5 h-3.5 text-static-accent/80 shrink-0" />
+                <span>Protected by Community Safety Guidelines</span>
               </div>
             </form>
           </div>
@@ -546,6 +589,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 >
                   {isLoading ? 'Preparing audio…' : 'Join Room'}
                 </button>
+              </div>
+
+              <div className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-static-muted/80 font-mono">
+                <ShieldCheck className="w-3.5 h-3.5 text-static-accent/80 shrink-0" />
+                <span>Protected by Community Safety Guidelines</span>
               </div>
             </form>
           </div>

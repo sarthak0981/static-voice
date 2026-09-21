@@ -8,6 +8,7 @@ import crypto from 'node:crypto';
 import { RoomManager, InternalRoom } from './roomManager.js';
 import { setupWebRTCSignaling } from './webrtcSignaling.js';
 import { ClientToServerEvents, ServerToClientEvents, ChatMessage, Participant } from './types.js';
+import { evaluateTextSafety } from './safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -560,6 +561,14 @@ io.on('connection', (socket) => {
     const cleanText = text?.trim();
     if (!cleanText || cleanText.length > 500) {
       return cb({ success: false, error: 'Invalid message length.' });
+    }
+
+    const safety = evaluateTextSafety(cleanText, 'chat');
+    if (!safety.isSafe) {
+      return cb({
+        success: false,
+        error: safety.policyViolation || 'Message violates Community Safety Guidelines.'
+      });
     }
 
     const chatMsg: ChatMessage = {
