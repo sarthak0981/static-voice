@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import crypto from 'node:crypto';
-import { RoomManager } from './roomManager.js';
+import { RoomManager, InternalRoom } from './roomManager.js';
 import { setupWebRTCSignaling } from './webrtcSignaling.js';
-import { ClientToServerEvents, ServerToClientEvents, ChatMessage } from './types.js';
+import { ClientToServerEvents, ServerToClientEvents, ChatMessage, Participant } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -135,6 +135,38 @@ io.on('connection', (socket) => {
     }
   };
 
+  const resolveRoomAndParticipant = (explicitRoomId?: string): { room: InternalRoom; participant: Participant } | null => {
+    if (explicitRoomId) {
+      const room = roomManager.getRoom(explicitRoomId);
+      if (room) {
+        const participant = roomManager.getParticipantBySocket(room, socket.id);
+        if (participant) {
+          currentRoomId = room.roomId;
+          return { room, participant };
+        }
+      }
+    }
+
+    if (currentRoomId) {
+      const room = roomManager.getRoom(currentRoomId);
+      if (room) {
+        const participant = roomManager.getParticipantBySocket(room, socket.id);
+        if (participant) {
+          return { room, participant };
+        }
+      }
+    }
+
+    const found = roomManager.getRoomAndParticipantBySocketId(socket.id);
+    if (found) {
+      currentRoomId = found.room.roomId;
+      socket.join(found.room.roomId);
+      return found;
+    }
+
+    return null;
+  };
+
   socket.on('get-ice-config', (callback) => {
     if (typeof callback === 'function') {
       callback({ iceServers: getIceServersConfig() });
@@ -155,10 +187,13 @@ io.on('connection', (socket) => {
       currentRoomId = room.roomId;
       socket.join(room.roomId);
 
+      const clientState = roomManager.getClientRoomState(room, participant);
+
       callback({
         success: true,
         roomId: room.roomId,
-        sessionToken: participant.sessionToken
+        sessionToken: participant.sessionToken,
+        state: clientState
       });
 
       broadcastRoomState(room.roomId);
@@ -246,14 +281,15 @@ io.on('connection', (socket) => {
   });
 
   // 4. Host Admits User from Lounge into Party ("COME ON IN")
-  socket.on('admit-to-party', ({ targetParticipantId }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('admit-to-party', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.admitToParty(room, socket.id, targetParticipantId);
     if (!result.success || !result.promotedParticipant) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     const admitted = result.promotedParticipant;
@@ -275,19 +311,21 @@ io.on('connection', (socket) => {
       }
     }
 
-    callback({ success: true });
+    cb({ success: true });
     broadcastRoomState(room.roomId);
   });
 
   // 5. Host Master Control: Clear entire Lounge
-  socket.on('clear-lounge', (callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('clear-lounge', (payloadOrCallback: any, callback?: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof payloadOrCallback === 'function' ? payloadOrCallback : () => {};
+    const explicitRoomId = typeof payloadOrCallback === 'object' ? payloadOrCallback?.roomId : undefined;
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.clearLounge(room, socket.id);
     if (!result.success) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     // Inform every cleared lounge participant
@@ -297,38 +335,40 @@ io.on('connection', (socket) => {
       });
     }
 
-    callback({ success: true, clearedCount: result.clearedParticipants.length });
+    cb({ success: true, clearedCount: result.clearedParticipants.length });
     broadcastRoomState(room.roomId);
   });
 
   // 6. Host Master Control: Mute participant
-  socket.on('mute-participant', ({ targetParticipantId }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('mute-participant', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.muteParticipant(room, socket.id, targetParticipantId);
     if (!result.success || !result.mutedParticipant) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     io.to(result.mutedParticipant.socketId).emit('force-muted', {
       reason: 'The host muted your microphone.'
     });
 
-    callback({ success: true });
+    cb({ success: true });
     broadcastRoomState(room.roomId);
   });
 
   // 7. Host Master Control: Transfer host role
-  socket.on('transfer-host', ({ targetParticipantId }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('transfer-host', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.transferHost(room, socket.id, targetParticipantId);
     if (!result.success || !result.newHost) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     io.to(room.roomId).emit('host-changed', {
@@ -336,19 +376,20 @@ io.on('connection', (socket) => {
       message: `${result.newHost.displayName} is now the host.`
     });
 
-    callback({ success: true });
+    cb({ success: true });
     broadcastRoomState(room.roomId);
   });
 
   // 8. Host Kicks Participant from Lounge/Queue
-  socket.on('kick-participant', ({ targetParticipantId }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('kick-participant', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.kickParticipant(room, socket.id, targetParticipantId);
     if (!result.success || !result.kickedParticipant) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     io.to(result.kickedParticipant.socketId).emit('kicked', {
@@ -360,19 +401,20 @@ io.on('connection', (socket) => {
       displayName: result.kickedParticipant.displayName
     });
 
-    callback({ success: true });
+    cb({ success: true });
     broadcastRoomState(room.roomId);
   });
 
   // 9. Host Removes Member from Party
-  socket.on('remove-from-party', ({ targetParticipantId }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('remove-from-party', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.removeFromParty(room, socket.id, targetParticipantId);
     if (!result.success || !result.removedParticipant) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     io.to(result.removedParticipant.socketId).emit('removed-from-party', {
@@ -384,86 +426,91 @@ io.on('connection', (socket) => {
       displayName: result.removedParticipant.displayName
     });
 
-    callback({ success: true });
+    cb({ success: true });
     broadcastRoomState(room.roomId);
   });
 
   // 10. Host Toggles Invitations (Stop / Reopen)
-  socket.on('toggle-invitations', ({ open }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('toggle-invitations', ({ open, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.toggleInvitations(room, socket.id, open);
     if (!result.success) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     io.to(room.roomId).emit('invitations-updated', { open: !!result.open });
-    callback({ success: true, open: result.open });
+    cb({ success: true, open: result.open });
     broadcastRoomState(room.roomId);
   });
 
   // 11. Host Ends Room ("END ROOM")
-  socket.on('end-room', (callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('end-room', (payloadOrCallback?: any, callback?: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof payloadOrCallback === 'function' ? payloadOrCallback : () => {};
+    const explicitRoomId = typeof payloadOrCallback === 'object' ? payloadOrCallback?.roomId : undefined;
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.endRoom(room, socket.id);
     if (!result.success) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     io.to(room.roomId).emit('room-ended', { reason: 'The host closed the room. 👋' });
     io.in(room.roomId).socketsLeave(room.roomId);
+    currentRoomId = null;
 
-    callback({ success: true });
+    cb({ success: true });
   });
 
   // 12. Voluntary Leave Room (with manual or auto-transfer)
-  socket.on('leave-room', (options, callback) => {
-    if (currentRoomId) {
-      const room = roomManager.getRoom(currentRoomId);
-      if (room) {
-        const result = roomManager.leaveRoom(room, socket.id, options);
-        socket.leave(room.roomId);
+  socket.on('leave-room', (options: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof options === 'function' ? options : () => {};
+    const explicitRoomId = typeof options === 'object' ? options?.roomId : undefined;
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (resolved) {
+      const { room } = resolved;
+      const result = roomManager.leaveRoom(room, socket.id, options);
+      socket.leave(room.roomId);
 
-        if (result.leavingParticipant) {
-          io.to(room.roomId).emit('participant-left-party', {
-            participantId: result.leavingParticipant.participantId,
-            displayName: result.leavingParticipant.displayName
-          });
-        }
-
-        if (result.newHost) {
-          io.to(room.roomId).emit('host-changed', {
-            newHostId: result.newHost.participantId,
-            message: `${result.newHost.displayName} is now the host.`
-          });
-        }
-
-        broadcastRoomState(room.roomId);
+      if (result.leavingParticipant) {
+        io.to(room.roomId).emit('participant-left-party', {
+          participantId: result.leavingParticipant.participantId,
+          displayName: result.leavingParticipant.displayName
+        });
       }
+
+      if (result.newHost) {
+        io.to(room.roomId).emit('host-changed', {
+          newHostId: result.newHost.participantId,
+          message: `${result.newHost.displayName} is now the host.`
+        });
+      }
+
+      broadcastRoomState(room.roomId);
       currentRoomId = null;
     }
-    if (callback) callback({ success: true });
+    cb({ success: true });
   });
 
   // 13. Party Text Chat (Broadcasted reliably to the entire room)
-  socket.on('send-party-chat', ({ text }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('send-party-chat', ({ text, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room, participant: sender } = resolved;
 
-    const sender = roomManager.getParticipantBySocket(room, socket.id);
-    if (!sender || sender.state !== 'PARTY') {
-      return callback({ success: false, error: 'Only active party members can chat.' });
+    if (sender.state !== 'PARTY') {
+      return cb({ success: false, error: 'Only active party members can chat.' });
     }
 
     const cleanText = text?.trim();
     if (!cleanText || cleanText.length > 500) {
-      return callback({ success: false, error: 'Invalid message length.' });
+      return cb({ success: false, error: 'Invalid message length.' });
     }
 
     const chatMsg: ChatMessage = {
@@ -482,29 +529,30 @@ io.on('connection', (socket) => {
     // Broadcast reliably to all sockets in this room!
     io.to(room.roomId).emit('party-chat-message', chatMsg);
 
-    callback({ success: true, message: chatMsg });
+    cb({ success: true, message: chatMsg });
   });
 
   // 14. Real-time Party Participant Reordering (Host Only)
-  socket.on('reorder-party', ({ orderedParticipantIds }, callback) => {
-    if (!currentRoomId) return callback({ success: false, error: 'Not in a room.' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return callback({ success: false, error: 'Room not found.' });
+  socket.on('reorder-party', ({ orderedParticipantIds, roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room } = resolved;
 
     const result = roomManager.reorderParty(room, socket.id, orderedParticipantIds);
     if (!result.success) {
-      return callback({ success: false, error: result.error });
+      return cb({ success: false, error: result.error });
     }
 
     broadcastRoomState(room.roomId);
-    callback({ success: true });
+    cb({ success: true });
   });
 
   // 15. Update Microphone State
-  socket.on('update-mic-state', ({ microphoneState }) => {
-    if (!currentRoomId) return;
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return;
+  socket.on('update-mic-state', ({ microphoneState, roomId: explicitRoomId }: any) => {
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return;
+    const { room } = resolved;
 
     const updated = roomManager.updateMicrophoneState(room, socket.id, microphoneState);
     if (updated) {
@@ -513,10 +561,10 @@ io.on('connection', (socket) => {
   });
 
   // 15. Update Speaking Status
-  socket.on('update-speaking', ({ isSpeaking }) => {
-    if (!currentRoomId) return;
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return;
+  socket.on('update-speaking', ({ isSpeaking, roomId: explicitRoomId }: any) => {
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return;
+    const { room } = resolved;
 
     const updated = roomManager.updateSpeaking(room, socket.id, isSpeaking);
     if (updated) {
@@ -525,10 +573,10 @@ io.on('connection', (socket) => {
   });
 
   // 16. WebRTC Peer Signaling
-  socket.on('signal-peer', (payload) => {
-    if (!currentRoomId) return;
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return;
+  socket.on('signal-peer', (payload: any) => {
+    const resolved = resolveRoomAndParticipant(payload?.roomId);
+    if (!resolved) return;
+    const { room } = resolved;
 
     signaling.handleSignal(socket, room, payload);
   });

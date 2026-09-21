@@ -64,7 +64,7 @@ export interface SignalData {
 export interface ClientToServerEvents {
   'create-room': (
     payload: { roomName?: string; displayName: string; sessionToken?: string },
-    callback: (response: { success: boolean; roomId?: string; sessionToken?: string; error?: string }) => void
+    callback: (response: { success: boolean; roomId?: string; sessionToken?: string; state?: ClientRoomState; error?: string }) => void
   ) => void;
 
   'join-room': (
@@ -84,67 +84,69 @@ export interface ClientToServerEvents {
   ) => void;
 
   'admit-to-party': (
-    payload: { targetParticipantId: string },
+    payload: { roomId?: string; targetParticipantId: string },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 
   'kick-participant': (
-    payload: { targetParticipantId: string },
+    payload: { roomId?: string; targetParticipantId: string },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 
   'clear-lounge': (
-    callback: (response: { success: boolean; clearedCount?: number; error?: string }) => void
+    arg1?: any,
+    arg2?: any
   ) => void;
 
   'remove-from-party': (
-    payload: { targetParticipantId: string },
+    payload: { roomId?: string; targetParticipantId: string },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 
   'mute-participant': (
-    payload: { targetParticipantId: string },
+    payload: { roomId?: string; targetParticipantId: string },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 
   'transfer-host': (
-    payload: { targetParticipantId: string },
+    payload: { roomId?: string; targetParticipantId: string },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 
   'toggle-invitations': (
-    payload: { open: boolean },
+    payload: { roomId?: string; open: boolean },
     callback: (response: { success: boolean; open?: boolean; error?: string }) => void
   ) => void;
 
   'end-room': (
-    callback: (response: { success: boolean; error?: string }) => void
+    arg1?: any,
+    arg2?: any
   ) => void;
 
   'leave-room': (
-    payload: { transferToParticipantId?: string; autoTransfer?: boolean } | undefined,
-    callback: (response: { success: boolean }) => void
+    payload: { roomId?: string; transferToParticipantId?: string; autoTransfer?: boolean } | undefined,
+    callback?: (response: { success: boolean }) => void
   ) => void;
 
   'update-mic-state': (
-    payload: { microphoneState: MicrophoneState }
+    payload: { roomId?: string; microphoneState: MicrophoneState }
   ) => void;
 
   'update-speaking': (
-    payload: { isSpeaking: boolean }
+    payload: { roomId?: string; isSpeaking: boolean }
   ) => void;
 
   'signal-peer': (
-    payload: { targetSocketId: string; targetParticipantId?: string; signal: any; type: 'offer' | 'answer' | 'ice-candidate' }
+    payload: { roomId?: string; targetSocketId: string; targetParticipantId?: string; signal: any; type: 'offer' | 'answer' | 'ice-candidate' }
   ) => void;
 
   'send-party-chat': (
-    payload: { text: string },
+    payload: { roomId?: string; text: string },
     callback: (response: { success: boolean; message?: ChatMessage; error?: string }) => void
   ) => void;
 
   'reorder-party': (
-    payload: { orderedParticipantIds: string[] },
+    payload: { roomId?: string; orderedParticipantIds: string[] },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 

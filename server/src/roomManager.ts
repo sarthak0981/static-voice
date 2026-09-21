@@ -544,6 +544,19 @@ export class RoomManager {
     return undefined;
   }
 
+  public getRoomAndParticipantBySocketId(socketId: string): { room: InternalRoom; participant: Participant } | undefined {
+    for (const room of this.rooms.values()) {
+      const pId = room.socketToParticipant.get(socketId);
+      if (pId) {
+        const participant = room.participants.get(pId);
+        if (participant) {
+          return { room, participant };
+        }
+      }
+    }
+    return undefined;
+  }
+
   public handleUnexpectedDisconnect(
     socketId: string,
     onGracePeriodExpire: (room: InternalRoom, newHost?: Participant) => void
@@ -564,10 +577,11 @@ export class RoomManager {
 
       if (participant.role === 'HOST') {
         const otherParty = this.getPartyParticipants(room).filter((p) => p.participantId !== pId);
+        const lounge = this.getLoungeParticipants(room);
 
-        if (otherParty.length > 0) {
+        if (otherParty.length > 0 || lounge.length > 0) {
           room.disconnectedHostId = pId;
-          room.hostDisconnectGraceSeconds = 8;
+          room.hostDisconnectGraceSeconds = 15;
 
           if (room.hostGraceTimer) {
             clearTimeout(room.hostGraceTimer);
@@ -582,15 +596,35 @@ export class RoomManager {
             const newHost = this.migrateHostImmediately(room);
             this.touchRoom(room);
             onGracePeriodExpire(room, newHost);
-          }, HOST_GRACE_PERIOD_MS);
+          }, 15000);
 
           return {
             room,
             participant,
             isHostGracePeriod: true,
-            graceSeconds: 8
+            graceSeconds: 15
+          };
+        } else {
+          // Host is currently the sole occupant in the room:
+          // DO NOT delete the host or destroy the room!
+          // Keep participant and tokenToParticipant intact so host can reconnect or friends can join.
+          room.disconnectedHostId = pId;
+          this.touchRoom(room);
+          return {
+            room,
+            participant,
+            isHostGracePeriod: false
           };
         }
+      }
+
+      // If active party member disconnects unexpectedly, allow a 15-second reconnection window
+      if (participant.state === 'PARTY') {
+        return {
+          room,
+          participant,
+          isHostGracePeriod: false
+        };
       }
 
       const result = this.leaveRoom(room, socketId);

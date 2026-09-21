@@ -119,6 +119,7 @@ export function App() {
   const webrtcEngineRef = useRef<WebRTCVoiceEngine | null>(null);
   const isChatOpenRef = useRef<boolean>(isChatOpen);
   const roomStateRef = useRef<ClientRoomState | null>(roomState);
+  const screenStateRef = useRef(screenState);
 
   useEffect(() => {
     isChatOpenRef.current = isChatOpen;
@@ -127,6 +128,10 @@ export function App() {
   useEffect(() => {
     roomStateRef.current = roomState;
   }, [roomState]);
+
+  useEffect(() => {
+    screenStateRef.current = screenState;
+  }, [screenState]);
 
   // Unified FIFO Notification Queue
   const [notificationQueue, setNotificationQueue] = useState<NotificationItem[]>([]);
@@ -188,16 +193,43 @@ export function App() {
     }
   }, []);
 
-  // Parse deep link room ID on load (/r/7K4X92 or ?r=7K4X92)
+  // Parse deep link room ID on load (/r/7K4X92 or ?r=7K4X92) & auto-restore session if token exists
   useEffect(() => {
     const path = window.location.pathname;
     const match = path.match(/\/r\/([2-9A-Z]{5,8})/i);
+    let targetRoomId: string | null = null;
     if (match) {
-      setInitialRoomId(match[1].toUpperCase());
+      targetRoomId = match[1].toUpperCase();
     } else {
       const urlParams = new URLSearchParams(window.location.search);
       const r = urlParams.get('r');
-      if (r) setInitialRoomId(r.toUpperCase());
+      if (r) targetRoomId = r.toUpperCase();
+    }
+
+    if (targetRoomId) {
+      setInitialRoomId(targetRoomId);
+      const token = getStoredSessionToken(targetRoomId);
+      if (token) {
+        setIsLoading(true);
+        const socket = getSocket();
+        socket.emit('reconnect-session', { roomId: targetRoomId, sessionToken: token }, (res: any) => {
+          setIsLoading(false);
+          if (res.success && res.state) {
+            setRoomState(res.state);
+            setChatMessages(res.state.chatHistory || []);
+            setMicrophoneState('MUTED');
+            if (res.state.currentUser.state === 'QUEUED') {
+              setScreenState('QUEUE');
+            } else {
+              setScreenState('ROOM');
+              if (webrtcEngineRef.current) {
+                webrtcEngineRef.current.unlockAudio();
+                webrtcEngineRef.current.startMicrophone(true);
+              }
+            }
+          }
+        });
+      }
     }
   }, []);
 
@@ -266,7 +298,7 @@ export function App() {
       if (updatedState.currentUser.state === 'QUEUED') {
         setScreenState('QUEUE');
       } else if (updatedState.currentUser.state === 'LOUNGE' || updatedState.currentUser.state === 'PARTY') {
-        if (screenState === 'QUEUE') {
+        if (screenStateRef.current === 'QUEUE') {
           showToast("A spot opened. You're in.");
         }
         setScreenState('ROOM');
@@ -514,6 +546,24 @@ export function App() {
       });
     };
 
+    const handleConnect = () => {
+      const activeState = roomStateRef.current;
+      if (activeState?.room?.roomId) {
+        const token = getStoredSessionToken(activeState.room.roomId);
+        if (token) {
+          socket.emit('reconnect-session', { roomId: activeState.room.roomId, sessionToken: token }, (res: any) => {
+            if (res.success && res.state) {
+              setRoomState(res.state);
+              if (res.state.currentUser.role === 'HOST') {
+                setHostGraceSeconds(undefined);
+              }
+            }
+          });
+        }
+      }
+    };
+
+    socket.on('connect', handleConnect);
     socket.on('room-state-updated', handleRoomStateUpdated);
     socket.on('participant-admitted', handleParticipantAdmitted);
     socket.on('force-muted', handleForceMuted);
@@ -532,6 +582,7 @@ export function App() {
     socket.on('participant-kicked', handleParticipantKicked);
 
     return () => {
+      socket.off('connect', handleConnect);
       socket.off('room-state-updated', handleRoomStateUpdated);
       socket.off('participant-admitted', handleParticipantAdmitted);
       socket.off('force-muted', handleForceMuted);
@@ -550,7 +601,7 @@ export function App() {
       socket.off('participant-kicked', handleParticipantKicked);
       if (graceIntervalRef.current) clearInterval(graceIntervalRef.current);
     };
-  }, [screenState, showToast, isChatOpen, roomState?.currentUser.participantId]);
+  }, [showToast, queueNotification]);
 
   // Handle Create Room
   const handleCreateRoom = async (roomName: string, displayName: string) => {
@@ -577,6 +628,10 @@ export function App() {
         setNotificationQueue([]);
         setDisconnectedPeerIds(new Set());
         setMicrophoneState('MUTED');
+
+        if (res.state) {
+          setRoomState(res.state);
+        }
 
         window.history.pushState({}, '', `/r/${res.roomId}`);
         setScreenState('ROOM');
@@ -645,7 +700,8 @@ export function App() {
   const handleAdmitParticipant = (targetParticipantId: string) => {
     webrtcEngineRef.current?.unlockAudio();
     const socket = getSocket();
-    socket.emit('admit-to-party', { targetParticipantId }, (res: any) => {
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('admit-to-party', { roomId, targetParticipantId }, (res: any) => {
       if (!res.success) {
         showToast(res.error || 'Failed to admit participant.');
       }
@@ -655,7 +711,8 @@ export function App() {
   // Host Action: Clear Entire Lounge
   const handleClearLounge = () => {
     const socket = getSocket();
-    socket.emit('clear-lounge', (res: any) => {
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('clear-lounge', { roomId }, (res: any) => {
       if (res.success) {
         showToast(`Cleared ${res.clearedCount || 0} waiting guest(s) from the lounge.`);
       } else {
@@ -668,7 +725,8 @@ export function App() {
   // Host Action: Transfer Host
   const handleTransferHost = (targetParticipantId: string) => {
     const socket = getSocket();
-    socket.emit('transfer-host', { targetParticipantId }, (res: any) => {
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('transfer-host', { roomId, targetParticipantId }, (res: any) => {
       if (!res.success) {
         showToast(res.error || 'Failed to transfer host.');
       }
@@ -678,7 +736,8 @@ export function App() {
   // Host Action: Kick User
   const handleKickParticipant = (targetParticipantId: string) => {
     const socket = getSocket();
-    socket.emit('kick-participant', { targetParticipantId }, (res: any) => {
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('kick-participant', { roomId, targetParticipantId }, (res: any) => {
       if (!res.success) {
         showToast(res.error || 'Failed to kick participant.');
       }
@@ -689,7 +748,8 @@ export function App() {
   // Host Action: Toggle Invitations (Stop / Reopen)
   const handleToggleInvitations = (open: boolean) => {
     const socket = getSocket();
-    socket.emit('toggle-invitations', { open }, (res: any) => {
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('toggle-invitations', { roomId, open }, (res: any) => {
       if (!res.success) {
         showToast(res.error || 'Failed to update invitations.');
       }
@@ -700,13 +760,14 @@ export function App() {
   const handleEndRoom = () => {
     setIsLoading(true);
     const socket = getSocket();
-    socket.emit('end-room', (res: any) => {
+    const activeRoomId = roomStateRef.current?.room.roomId;
+    socket.emit('end-room', { roomId: activeRoomId }, (res: any) => {
       setIsLoading(false);
       setIsEndRoomModalOpen(false);
       setIsHostTransferModalOpen(false);
       if (res.success) {
-        if (roomState?.room.roomId) {
-          clearStoredSessionToken(roomState.room.roomId);
+        if (activeRoomId) {
+          clearStoredSessionToken(activeRoomId);
         }
         try {
           localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
@@ -747,9 +808,10 @@ export function App() {
 
   const handleExecuteLeave = (options?: { transferToParticipantId?: string; autoTransfer?: boolean }) => {
     const socket = getSocket();
-    socket.emit('leave-room', options, () => {
-      if (roomState?.room.roomId) {
-        clearStoredSessionToken(roomState.room.roomId);
+    const activeRoomId = roomStateRef.current?.room.roomId;
+    socket.emit('leave-room', { roomId: activeRoomId, ...options }, () => {
+      if (activeRoomId) {
+        clearStoredSessionToken(activeRoomId);
       }
       try {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
@@ -783,7 +845,8 @@ export function App() {
   // Send Party Chat Message
   const handleSendChatMessage = (text: string) => {
     const socket = getSocket();
-    socket.emit('send-party-chat', { text }, (res: any) => {
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('send-party-chat', { roomId, text }, (res: any) => {
       if (!res.success) {
         showToast(res.error || 'Failed to send message.');
       }
@@ -804,7 +867,8 @@ export function App() {
     });
 
     const socket = getSocket();
-    socket.emit('reorder-party', { orderedParticipantIds }, (res: any) => {
+    const roomId = roomStateRef.current?.room.roomId;
+    socket.emit('reorder-party', { roomId, orderedParticipantIds }, (res: any) => {
       if (!res?.success) {
         showToast(res?.error || 'Failed to reorder party.');
       }
