@@ -22,7 +22,6 @@ import { LoungeDrawer } from './components/LoungeDrawer.js';
 import { ZenLoungeView } from './components/ZenLoungeView.js';
 import { ControlBar } from './components/ControlBar.js';
 import { NotificationCapsule, NotificationItem } from './components/NotificationCapsule.js';
-import { HostActionSheet } from './components/HostActionSheet.js';
 import { VoiceDiagnosticsModal } from './components/VoiceDiagnosticsModal.js';
 import { ConnectionQuality, PeerConnectionStats } from './lib/webrtcDiagnostics.js';
 import {
@@ -151,7 +150,6 @@ export function App() {
 
   // Per-Participant Volume Control (0 to 100)
   const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
-  const [selectedParticipantForAction, setSelectedParticipantForAction] = useState<Participant | null>(null);
 
   // WebRTC Diagnostics & Quality Tracking
   const [peerQualities, setPeerQualities] = useState<Record<string, ConnectionQuality>>({});
@@ -181,19 +179,6 @@ export function App() {
     webrtcEngineRef.current?.setPeerVolume(participantId, volume / 100);
   }, []);
 
-  const handleShiftParticipant = useCallback((participantId: string, direction: -1 | 1) => {
-    if (!roomStateRef.current) return;
-    const party = [...roomStateRef.current.party];
-    const idx = party.findIndex((p) => p.participantId === participantId);
-    if (idx === -1) return;
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= party.length) return;
-    const [moved] = party.splice(idx, 1);
-    party.splice(newIdx, 0, moved);
-
-    const socket = getSocket();
-    socket.emit('reorder-party', { orderedParticipantIds: party.map((p) => p.participantId) });
-  }, []);
 
   const handleToggleLounge = useCallback(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
@@ -271,14 +256,9 @@ export function App() {
       }
       prevRoleRef.current = updatedState.currentUser.role;
 
-      // Sync chat history from server if local is empty
-      if (updatedState.chatHistory && updatedState.chatHistory.length > 0) {
-        setChatMessages((prev) => {
-          const map = new Map<string, ChatMessage>();
-          updatedState.chatHistory.forEach((m) => map.set(m.id, m));
-          prev.forEach((m) => map.set(m.id, m));
-          return Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp);
-        });
+      // Sync chat history strictly from server for this room (zero cross-room leakage)
+      if (updatedState.chatHistory) {
+        setChatMessages(updatedState.chatHistory);
       }
 
       setRoomState(updatedState);
@@ -298,10 +278,9 @@ export function App() {
       showToast("You've been admitted to the Party!");
 
       if (webrtcEngineRef.current) {
-        webrtcEngineRef.current.startMicrophone();
         webrtcEngineRef.current.unlockAudio();
-        const micState = webrtcEngineRef.current.getIsMuted() ? 'MUTED' : 'ON';
-        getSocket().emit('update-mic-state', { microphoneState: micState });
+        webrtcEngineRef.current.startMicrophone(true);
+        setMicrophoneState('MUTED');
       }
     };
 
@@ -320,6 +299,11 @@ export function App() {
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
+      setChatMessages([]);
+      setLatestChatMessage(null);
+      setUnreadChatCount(0);
+      setNotificationQueue([]);
+      setDisconnectedPeerIds(new Set());
       setScreenMessage({
         title: 'REMOVED FROM ROOM',
         message: payload.reason || 'You were removed from the room.'
@@ -336,6 +320,11 @@ export function App() {
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
+      setChatMessages([]);
+      setLatestChatMessage(null);
+      setUnreadChatCount(0);
+      setNotificationQueue([]);
+      setDisconnectedPeerIds(new Set());
       setScreenMessage({
         title: 'LOUNGE CLEARED',
         message: payload.reason || 'The host cleared the waiting lounge.'
@@ -352,6 +341,11 @@ export function App() {
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
+      setChatMessages([]);
+      setLatestChatMessage(null);
+      setUnreadChatCount(0);
+      setNotificationQueue([]);
+      setDisconnectedPeerIds(new Set());
       setScreenMessage({
         title: 'REMOVED FROM PARTY',
         message: payload.reason || 'The host removed you from the Party.'
@@ -368,6 +362,11 @@ export function App() {
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
+      setChatMessages([]);
+      setLatestChatMessage(null);
+      setUnreadChatCount(0);
+      setNotificationQueue([]);
+      setDisconnectedPeerIds(new Set());
       setScreenMessage({
         title: 'ROOM ENDED',
         message: payload.reason || 'The host closed the room. 👋',
@@ -421,6 +420,11 @@ export function App() {
     };
 
     const handlePartyChatMessage = (msg: ChatMessage) => {
+      // Room isolation: strictly ignore messages from any other room
+      if (msg.roomId && roomStateRef.current?.room.roomId && msg.roomId !== roomStateRef.current.room.roomId) {
+        return;
+      }
+
       setChatMessages((prev) => {
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
@@ -567,12 +571,18 @@ export function App() {
           }));
         } catch {}
         setRecentRoom(null);
+        setChatMessages([]);
+        setLatestChatMessage(null);
+        setUnreadChatCount(0);
+        setNotificationQueue([]);
+        setDisconnectedPeerIds(new Set());
+        setMicrophoneState('MUTED');
 
         window.history.pushState({}, '', `/r/${res.roomId}`);
         setScreenState('ROOM');
 
         if (webrtcEngineRef.current) {
-          await webrtcEngineRef.current.startMicrophone();
+          await webrtcEngineRef.current.startMicrophone(true);
         }
       } else {
         setErrorMessage(res.error || 'Failed to create room.');
@@ -602,6 +612,12 @@ export function App() {
           }));
         } catch {}
         setRecentRoom(null);
+        setChatMessages(res.state.chatHistory || []);
+        setLatestChatMessage(null);
+        setUnreadChatCount(0);
+        setNotificationQueue([]);
+        setDisconnectedPeerIds(new Set());
+        setMicrophoneState('MUTED');
 
         window.history.pushState({}, '', `/r/${roomId}`);
         setRoomState(res.state);
@@ -612,7 +628,7 @@ export function App() {
           setScreenState('ROOM');
           if (webrtcEngineRef.current) {
             webrtcEngineRef.current.unlockAudio();
-            webrtcEngineRef.current.startMicrophone();
+            webrtcEngineRef.current.startMicrophone(true);
           }
         }
       } else {
@@ -669,15 +685,6 @@ export function App() {
     });
   };
 
-  // Host Action: Remove from Party
-  const handleRemoveFromParty = (targetParticipantId: string) => {
-    const socket = getSocket();
-    socket.emit('remove-from-party', { targetParticipantId }, (res: any) => {
-      if (!res.success) {
-        showToast(res.error || 'Failed to remove participant.');
-      }
-    });
-  };
 
   // Host Action: Toggle Invitations (Stop / Reopen)
   const handleToggleInvitations = (open: boolean) => {
@@ -709,6 +716,12 @@ export function App() {
         if (webrtcEngineRef.current) {
           webrtcEngineRef.current.teardown();
         }
+        setChatMessages([]);
+        setLatestChatMessage(null);
+        setUnreadChatCount(0);
+        setNotificationQueue([]);
+        setDisconnectedPeerIds(new Set());
+
         window.history.pushState({}, '', '/');
         setRoomState(null);
         setScreenState('HOME');
@@ -746,6 +759,12 @@ export function App() {
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
+      setChatMessages([]);
+      setLatestChatMessage(null);
+      setUnreadChatCount(0);
+      setNotificationQueue([]);
+      setDisconnectedPeerIds(new Set());
+
       setIsHostTransferModalOpen(false);
       window.history.pushState({}, '', '/');
       setRoomState(null);
@@ -797,7 +816,7 @@ export function App() {
     if (!webrtcEngineRef.current) return;
     webrtcEngineRef.current.unlockAudio();
     if (microphoneState === 'OFF' || microphoneState === 'DENIED') {
-      await webrtcEngineRef.current.startMicrophone();
+      await webrtcEngineRef.current.startMicrophone(false);
     } else {
       webrtcEngineRef.current.toggleMute();
     }
@@ -808,6 +827,12 @@ export function App() {
     if (webrtcEngineRef.current) {
       webrtcEngineRef.current.teardown();
     }
+    setChatMessages([]);
+    setLatestChatMessage(null);
+    setUnreadChatCount(0);
+    setNotificationQueue([]);
+    setDisconnectedPeerIds(new Set());
+
     window.history.pushState({}, '', '/');
     setRoomState(null);
     setScreenState('HOME');
@@ -940,7 +965,8 @@ export function App() {
           participants={roomState.party}
           currentUserId={currentUser.participantId}
           isHost={isHost}
-          onRemoveParticipant={handleRemoveFromParty}
+          onVolumeChange={handleVolumeChange}
+          onKickParticipant={handleKickParticipant}
           onTransferHost={handleTransferHost}
           onOpenShareModal={() => setIsShareModalOpen(true)}
           hostGraceSeconds={hostGraceSeconds}
@@ -951,7 +977,6 @@ export function App() {
           peerVolumes={peerVolumes}
           peerQualities={peerQualities}
           disconnectedPeerIds={disconnectedPeerIds}
-          onSelectParticipantForAction={setSelectedParticipantForAction}
         />
 
         {isHost && (
@@ -1041,37 +1066,6 @@ export function App() {
         isOpen={isHostPromotedModalOpen}
         onClose={() => setIsHostPromotedModalOpen(false)}
       />
-
-      {/* Mobile / Touch Participant Action Sheet (Volume for guests, Host controls for host) */}
-      {selectedParticipantForAction && (
-        <HostActionSheet
-          isOpen={!!selectedParticipantForAction}
-          onClose={() => setSelectedParticipantForAction(null)}
-          participant={selectedParticipantForAction}
-          isCurrentUserHost={isHost}
-          connectionQuality={
-            selectedParticipantForAction
-              ? peerQualities[selectedParticipantForAction.participantId] || peerQualities[selectedParticipantForAction.socketId]
-              : undefined
-          }
-          volume={peerVolumes[selectedParticipantForAction.participantId] ?? 100}
-          onVolumeChange={handleVolumeChange}
-          onTransferHost={handleTransferHost}
-          onRemoveFromParty={handleRemoveFromParty}
-          onKickParticipant={handleKickParticipant}
-          onShiftLeft={(pid) => handleShiftParticipant(pid, -1)}
-          onShiftRight={(pid) => handleShiftParticipant(pid, 1)}
-          canShiftLeft={
-            (roomState.party.findIndex((p) => p.participantId === selectedParticipantForAction.participantId)) > 0
-          }
-          canShiftRight={
-            (() => {
-              const idx = roomState.party.findIndex((p) => p.participantId === selectedParticipantForAction.participantId);
-              return idx >= 0 && idx < roomState.party.length - 1;
-            })()
-          }
-        />
-      )}
 
       {/* Developer WebRTC Diagnostics HUD (Ctrl+Shift+D or ?diag=1) */}
       <VoiceDiagnosticsModal

@@ -184,18 +184,12 @@ export const LoungeDrawer: React.FC<LoungeDrawerProps> = ({
         )}
       </div>
 
-      {/* Footer Info */}
-      <div className="p-3 border-t border-surface-border/60 text-center text-[11px] font-mono text-static-muted shrink-0">
-        {isHost ? (
-          isPartyFull ? (
-            <span className="text-amber-400">Party is at maximum capacity (8/8)</span>
-          ) : (
-            <span>Host controls: Admit, kick, or clear lounge</span>
-          )
-        ) : (
-          <span>Host controls admission to Party</span>
-        )}
-      </div>
+      {/* Footer Info: Show capacity notice only when party is full */}
+      {isPartyFull && (
+        <div className="p-3 border-t border-surface-border/60 text-center text-[11px] font-mono text-amber-400 shrink-0">
+          Party is at maximum capacity (8/8)
+        </div>
+      )}
     </div>
   );
 

@@ -27,11 +27,12 @@ export function setupWebRTCSignaling(
         return; // Target must also be in Party
       }
 
-      // Forward signal to target peer socket
+      // Forward signal to target peer socket strictly within this room
       io.to(target.socketId).emit('signal-received', {
         targetSocketId: target.socketId,
         senderSocketId: socket.id,
         senderParticipantId: sender.participantId,
+        roomId: room.roomId,
         signal: payload.signal,
         type: payload.type
       });

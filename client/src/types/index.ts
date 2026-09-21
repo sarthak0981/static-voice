@@ -36,6 +36,7 @@ export interface RoomSummary {
 
 export interface ChatMessage {
   id: string;
+  roomId?: string;
   senderParticipantId: string;
   senderName: string;
   text: string;

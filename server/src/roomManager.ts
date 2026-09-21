@@ -107,7 +107,7 @@ export class RoomManager {
       displayName: validation.normalized,
       role: 'HOST',
       state: 'PARTY',
-      microphoneState: 'ON',
+      microphoneState: 'MUTED',
       isSpeaking: false,
       joinedAt: now,
       partyJoinedAt: now
@@ -265,7 +265,7 @@ export class RoomManager {
 
     target.state = 'PARTY';
     target.partyJoinedAt = Date.now();
-    target.microphoneState = target.microphoneState === 'MUTED' ? 'MUTED' : 'ON';
+    target.microphoneState = 'MUTED';
 
     if (!room.partyOrder) {
       room.partyOrder = [];

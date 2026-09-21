@@ -20,61 +20,57 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
   queue,
   onDismissCurrent
 }) => {
-  const [activeItem, setActiveItem] = useState<NotificationItem | null>(null);
+  const currentItem = queue[0] || null;
   const [isEntering, setIsEntering] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const onDismissRef = useRef(onDismissCurrent);
+  onDismissRef.current = onDismissCurrent;
 
   useEffect(() => {
-    // If no active notification and there are items in the queue, pop the first one
-    if (!activeItem && queue.length > 0 && !isExiting) {
-      const nextItem = queue[0];
-      setActiveItem(nextItem);
-      setIsEntering(true);
+    if (!currentItem) {
+      setIsEntering(false);
       setIsExiting(false);
-
-      // Trigger entrance spring
-      const enterTimer = setTimeout(() => {
-        setIsEntering(false);
-      }, 50);
-
-      // Set display duration (default 2600ms, or item's durationMs)
-      const duration = nextItem.durationMs || 2600;
-      timerRef.current = setTimeout(() => {
-        // Start smooth exit animation
-        setIsExiting(true);
-        setTimeout(() => {
-          setActiveItem(null);
-          setIsExiting(false);
-          onDismissCurrent();
-        }, 300); // match exit transition duration
-      }, duration);
-
-      return () => {
-        clearTimeout(enterTimer);
-        if (timerRef.current) clearTimeout(timerRef.current);
-      };
+      return;
     }
-  }, [queue, activeItem, isExiting, onDismissCurrent]);
 
-  if (!activeItem) return null;
+    // Trigger smooth enter
+    setIsEntering(true);
+    setIsExiting(false);
+
+    const enterTimer = setTimeout(() => {
+      setIsEntering(false);
+    }, 40);
+
+    const duration = currentItem.durationMs || 2800;
+    const exitTimer = setTimeout(() => {
+      setIsExiting(true);
+      setTimeout(() => {
+        setIsExiting(false);
+        onDismissRef.current();
+      }, 250);
+    }, duration);
+
+    return () => {
+      clearTimeout(enterTimer);
+      clearTimeout(exitTimer);
+    };
+  }, [currentItem?.id]);
+
+  if (!currentItem) return null;
 
   const handleClick = () => {
-    if (activeItem.onAction) {
-      activeItem.onAction();
+    if (currentItem.onAction) {
+      currentItem.onAction();
     }
-    // Dismiss early on tap
-    if (timerRef.current) clearTimeout(timerRef.current);
     setIsExiting(true);
     setTimeout(() => {
-      setActiveItem(null);
       setIsExiting(false);
-      onDismissCurrent();
-    }, 250);
+      onDismissRef.current();
+    }, 200);
   };
 
   const renderIcon = () => {
-    switch (activeItem.icon) {
+    switch (currentItem.icon) {
       case 'leave':
         return <LogOut className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
       case 'join':
@@ -105,17 +101,17 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
             : isExiting
             ? 'opacity-0 -translate-y-4 scale-95'
             : 'opacity-100 translate-y-0 scale-100'
-        } ${activeItem.type === 'action' ? 'hover:border-amber-400/40 hover:bg-[#141722]' : 'hover:border-white/20'}`}
+        } ${currentItem.type === 'action' ? 'hover:border-amber-400/40 hover:bg-[#141722]' : 'hover:border-white/20'}`}
       >
         {renderIcon()}
 
         <span className="truncate max-w-[280px] sm:max-w-[420px] tracking-wide text-neutral-200">
-          {activeItem.message}
+          {currentItem.message}
         </span>
 
-        {activeItem.actionText && (
+        {currentItem.actionText && (
           <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[10px] font-bold tracking-wider shrink-0 uppercase">
-            {activeItem.actionText}
+            {currentItem.actionText}
           </span>
         )}
       </div>

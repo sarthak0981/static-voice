@@ -34,6 +34,7 @@ export interface RoomSummary {
 
 export interface ChatMessage {
   id: string;
+  roomId?: string;
   senderParticipantId: string;
   senderName: string;
   text: string;
@@ -54,6 +55,7 @@ export interface SignalData {
   targetSocketId: string;
   senderSocketId: string;
   senderParticipantId: string;
+  roomId?: string;
   signal: any;
   type: 'offer' | 'answer' | 'ice-candidate';
 }

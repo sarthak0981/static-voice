@@ -171,14 +171,18 @@ export class WebRTCVoiceEngine {
   }
 
   /**
-   * Initializes local microphone stream with 48 kHz mono native processing
+   * Initializes local microphone stream with 48 kHz mono native processing.
+   * Starts MUTED by default to prevent ambient background noise and ensure clean user-gesture unlock.
    */
-  public async startMicrophone(): Promise<boolean> {
+  public async startMicrophone(startMuted: boolean = true): Promise<boolean> {
     if (
       this.localStream &&
       this.localStream.active &&
       this.localStream.getAudioTracks().some((t) => t.readyState === 'live')
     ) {
+      if (startMuted) {
+        this.isMuted = true;
+      }
       // Re-affirm hardware track enabled state matches mute status
       const audioTracks = this.localStream.getAudioTracks();
       audioTracks.forEach((track) => {
@@ -217,9 +221,13 @@ export class WebRTCVoiceEngine {
         });
 
         this.localStream = stream;
-        this.isMuted = false;
+        this.isMuted = startMuted;
+        stream.getAudioTracks().forEach((track) => {
+          track.enabled = !this.isMuted;
+        });
 
         this.logVoice('microphone started', {
+          muted: this.isMuted,
           tracks: stream.getAudioTracks().map((t) => ({
             label: t.label,
             settings: t.getSettings()
@@ -246,8 +254,9 @@ export class WebRTCVoiceEngine {
           }
         }
 
-        this.callbacks.onMicrophoneStateChange('ON');
-        getSocket().emit('update-mic-state', { microphoneState: 'ON' });
+        const state: MicrophoneState = this.isMuted ? 'MUTED' : 'ON';
+        this.callbacks.onMicrophoneStateChange(state);
+        getSocket().emit('update-mic-state', { microphoneState: state });
         return stream;
       } catch (err: any) {
         console.warn('[STATIC Voice] Microphone access error:', err);
@@ -322,6 +331,13 @@ export class WebRTCVoiceEngine {
     audioTracks.forEach((track) => {
       track.enabled = !this.isMuted;
     });
+
+    if (!this.isMuted) {
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume().catch(() => {});
+      }
+      this.remoteAudioManager.unlockAll();
+    }
 
     const newState: MicrophoneState = this.isMuted ? 'MUTED' : 'ON';
     this.callbacks.onMicrophoneStateChange(newState);
@@ -923,6 +939,22 @@ export class WebRTCVoiceEngine {
 
     // Peer left party
     socket.on('participant-left-party', (payload: any) => {
+      const pId = typeof payload === 'string' ? payload : payload?.participantId;
+      if (pId) {
+        this.removePeer(pId);
+      }
+    });
+
+    // Peer disconnected
+    socket.on('participant-disconnected', (payload: any) => {
+      const pId = typeof payload === 'string' ? payload : payload?.participantId;
+      if (pId) {
+        this.removePeer(pId);
+      }
+    });
+
+    // Peer kicked or removed from party
+    socket.on('participant-kicked', (payload: any) => {
       const pId = typeof payload === 'string' ? payload : payload?.participantId;
       if (pId) {
         this.removePeer(pId);

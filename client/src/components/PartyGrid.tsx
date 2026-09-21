@@ -7,7 +7,7 @@ import {
   Volume2,
   VolumeX,
   PanelRightOpen,
-  MoreVertical,
+  UserX,
   WifiOff
 } from 'lucide-react';
 import { Participant } from '../types/index.js';
@@ -18,7 +18,8 @@ interface PartyGridProps {
   participants: Participant[];
   currentUserId: string;
   isHost: boolean;
-  onRemoveParticipant: (participantId: string) => void;
+  onVolumeChange: (participantId: string, volume: number) => void;
+  onKickParticipant: (participantId: string) => void;
   onTransferHost: (participantId: string) => void;
   onOpenShareModal: () => void;
   hostGraceSeconds?: number;
@@ -26,7 +27,6 @@ interface PartyGridProps {
   isLoungeCollapsed?: boolean;
   onToggleLoungeCollapse?: () => void;
   loungeCount?: number;
-  onSelectParticipantForAction?: (participant: Participant) => void;
   peerVolumes?: Record<string, number>;
   peerQualities?: Record<string, ConnectionQuality>;
   disconnectedPeerIds?: Set<string>;
@@ -37,12 +37,14 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
   participants,
   currentUserId,
   isHost,
+  onVolumeChange,
+  onKickParticipant,
+  onTransferHost,
   onOpenShareModal,
   onReorderParty,
   isLoungeCollapsed = false,
   onToggleLoungeCollapse,
   loungeCount = 0,
-  onSelectParticipantForAction,
   peerVolumes = {},
   peerQualities = {},
   disconnectedPeerIds = new Set()
@@ -94,7 +96,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
   return (
     <div className="flex-1 flex flex-col h-full bg-[#07080B] p-2.5 sm:p-5 overflow-y-auto select-none">
       {/* Grid Top Bar */}
-      <div className="flex items-center justify-between mb-3 sm:mb-4 px-1">
+      <div className="flex items-center justify-between mb-3 sm:mb-4 px-1 shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xs sm:text-sm font-mono font-bold text-white tracking-wider flex items-center gap-2">
             <span className="truncate max-w-[140px] sm:max-w-[200px]">{roomName || 'PARTY'}</span>
@@ -159,6 +161,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
             const isBeingDragged = draggedIndex === index;
             const isDropTarget = dropTargetIndex === index && draggedIndex !== index;
             const userVol = peerVolumes[participant.participantId] ?? 100;
+            const isAudioMutedLocally = userVol === 0;
             const quality = peerQualities[participant.participantId] || peerQualities[participant.socketId];
             const isDisconnected = disconnectedPeerIds.has(participant.participantId);
 
@@ -171,7 +174,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDrop={(e) => handleDrop(e, index)}
                 onDragEnd={handleDragEnd}
-                className={`relative flex justify-between p-3 sm:p-4 rounded-2xl transition-all duration-200 ease-out select-none ${
+                className={`relative flex flex-col justify-between p-3 sm:p-4 rounded-2xl transition-all duration-200 ease-out select-none ${
                   isBeingDragged ? 'opacity-40 scale-95 ring-2 ring-[#00E599]' : ''
                 } ${isDropTarget ? 'scale-105 ring-2 ring-[#00E599]/80 bg-[#00E599]/5' : ''} ${
                   isDisconnected
@@ -185,10 +188,9 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                     : ''
                 }`}
               >
-                {/* Main Card Body (Left Column) */}
-                <div className="flex-1 flex flex-col justify-between min-w-0 pr-1 sm:pr-2">
-                  {/* Card Top: Badges & Status */}
-                  <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap mb-2">
+                {/* Top Strip: Badges & Diagnostics */}
+                <div className="flex items-center justify-between gap-1 mb-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {isDisconnected ? (
                       <span className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[9px] sm:text-[10px] font-mono font-bold tracking-wider animate-pulse">
                         <WifiOff className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
@@ -207,167 +209,162 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                       </span>
                     )}
 
-                    {/* Volume Pill if adjusted locally */}
-                    {!isLocal && !isDisconnected && userVol !== 100 && (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-mono text-[#8A99AD]">
-                        {userVol === 0 ? (
-                          <VolumeX className="w-2.5 h-2.5 text-rose-400" />
-                        ) : (
-                          <Volume2 className="w-2.5 h-2.5" />
-                        )}
-                        <span>{userVol}%</span>
-                      </span>
-                    )}
-
-                    {/* Subtle Connection Health Warning (Only shown when unstable or poor) */}
-                    {!isLocal && !isDisconnected && quality === 'UNSTABLE' && (
-                      <span
-                        title="Unstable connection (high jitter/latency)"
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[9px] font-mono text-amber-300"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                        <span>UNSTABLE</span>
-                      </span>
-                    )}
-                    {!isLocal && !isDisconnected && quality === 'POOR' && (
-                      <span
-                        title="Poor connection (packet loss detected)"
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-[9px] font-mono text-rose-300"
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
-                        <span>POOR</span>
+                    {!isLocal && !isDisconnected && isAudioMutedLocally && (
+                      <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-[9px] font-mono text-rose-300">
+                        <VolumeX className="w-2.5 h-2.5" />
+                        <span>MUTED</span>
                       </span>
                     )}
                   </div>
 
-                  {/* Card Center: Minimal Avatar with Organic Waveform */}
-                  <div
-                    onClick={() => {
-                      if (!isLocal && onSelectParticipantForAction) {
-                        onSelectParticipantForAction(participant);
-                      }
-                    }}
-                    className="flex flex-col items-center justify-center my-1.5 sm:my-2 cursor-pointer"
-                  >
-                    <div
-                      className={`relative w-12 h-12 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-base sm:text-xl font-bold font-mono tracking-wider transition-all duration-200 ease-out ${
-                        isDisconnected
-                          ? 'bg-rose-950/40 border border-rose-500/30 text-rose-400 opacity-60 grayscale'
-                          : isParticipantHost
-                          ? 'border border-amber-400/40 text-amber-300 bg-amber-500/15'
-                          : isSpeaking
-                          ? 'bg-[#00E599] text-black ring-4 ring-[#00E599]/30 shadow-[0_0_18px_rgba(0,229,153,0.25)] scale-105'
-                          : 'bg-[#151824] text-white border border-white/10'
+                  {/* Connection Warning Pill */}
+                  {!isLocal && !isDisconnected && (quality === 'UNSTABLE' || quality === 'POOR') && (
+                    <span
+                      title={quality === 'POOR' ? 'Poor connection' : 'Unstable connection'}
+                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-mono ${
+                        quality === 'POOR'
+                          ? 'bg-rose-500/15 border border-rose-500/30 text-rose-300'
+                          : 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
                       }`}
                     >
-                      {isParticipantHost && (
-                        <Crown className="absolute -top-2 w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                      )}
-
-                      {participant.displayName.charAt(0).toUpperCase()}
-
-                      {/* Active Waveform on Speaker Avatar */}
-                      {isSpeaking && !isDisconnected && (
-                        <div className="absolute -bottom-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/90 border border-[#00E599] text-[#00E599] scale-90 shadow-md">
-                          <span className="w-0.5 h-2 bg-[#00E599] rounded-full animate-bounce" />
-                          <span
-                            className="w-0.5 h-3 bg-[#00E599] rounded-full animate-bounce"
-                            style={{ animationDelay: '0.15s' }}
-                          />
-                          <span
-                            className="w-0.5 h-1.5 bg-[#00E599] rounded-full animate-bounce"
-                            style={{ animationDelay: '0.3s' }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <h3 className="mt-2 text-xs sm:text-sm font-semibold text-white tracking-wide truncate max-w-[100px] sm:max-w-[140px] text-center">
-                      {participant.displayName}
-                    </h3>
-                  </div>
-
-                  {/* Card Bottom: Microphone Status Indicator */}
-                  <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] sm:text-xs">
-                    <div className="flex items-center gap-1">
-                      {isDisconnected ? (
-                        <span className="flex items-center gap-1 text-rose-400 font-mono text-[10px] font-semibold">
-                          <WifiOff className="w-3 h-3" />
-                          <span>LOST</span>
-                        </span>
-                      ) : participant.microphoneState === 'ON' ? (
-                        <span className="flex items-center gap-1 text-[#00E599] font-mono text-[10px] font-semibold">
-                          <Mic className="w-3 h-3" />
-                          <span>LIVE</span>
-                        </span>
-                      ) : participant.microphoneState === 'MUTED' ? (
-                        <span className="flex items-center gap-1 text-rose-400 font-mono text-[10px]">
-                          <MicOff className="w-3 h-3 text-rose-400" />
-                          <span>MUTED</span>
-                        </span>
-                      ) : participant.microphoneState === 'CONNECTING' ? (
-                        <span className="flex items-center gap-1 text-[#8A99AD] font-mono text-[10px]">
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          <span>SYNC</span>
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-[#4E586E] font-mono text-[10px]">
-                          <MicOff className="w-3 h-3" />
-                          <span>OFF</span>
-                        </span>
-                      )}
-                    </div>
-
-                    <span className="text-[10px] font-mono text-[#4E586E] hidden sm:inline">
-                      #{index + 1}
+                      <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${quality === 'POOR' ? 'bg-rose-400' : 'bg-amber-400'}`} />
+                      <span>{quality}</span>
                     </span>
-                  </div>
+                  )}
                 </div>
 
-                {/* Right Rail: Minimal Vertical Control Buttons (For Remote Participants) */}
-                {!isLocal && onSelectParticipantForAction && (
-                  <div className="flex flex-col justify-center gap-2 pl-1.5 sm:pl-2 border-l border-white/5 shrink-0">
-                    {/* 1. Volume / Options Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectParticipantForAction(participant);
-                      }}
-                      title={isHost ? 'Participant & Volume Controls' : `Adjust Volume (${userVol}%)`}
-                      aria-label="Adjust participant volume"
-                      className={`w-8 h-8 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center transition-all cursor-pointer active:scale-90 ${
-                        userVol === 0
-                          ? 'bg-rose-500/15 border border-rose-500/30 text-rose-400 hover:bg-rose-500/25'
-                          : userVol !== 100
-                          ? 'bg-[#00E599]/15 border border-[#00E599]/30 text-[#00E599] hover:bg-[#00E599]/25'
-                          : 'bg-white/5 hover:bg-white/10 border border-white/5 text-[#8A99AD] hover:text-white'
-                      }`}
-                    >
-                      {userVol === 0 ? (
-                        <VolumeX className="w-3.5 h-3.5" />
-                      ) : (
-                        <Volume2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                {/* Center: Minimalist Avatar with Live Waveform Halo */}
+                <div className="flex flex-col items-center justify-center my-2 sm:my-3">
+                  <div
+                    className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center text-lg sm:text-xl font-bold font-mono tracking-wider transition-all duration-200 ease-out ${
+                      isDisconnected
+                        ? 'bg-rose-950/40 border border-rose-500/30 text-rose-400 opacity-60 grayscale'
+                        : isParticipantHost
+                        ? 'border border-amber-400/40 text-amber-300 bg-amber-500/15'
+                        : isSpeaking
+                        ? 'bg-[#00E599] text-black ring-4 ring-[#00E599]/30 shadow-[0_0_18px_rgba(0,229,153,0.25)] scale-105'
+                        : 'bg-[#151824] text-white border border-white/10'
+                    }`}
+                  >
+                    {isParticipantHost && (
+                      <Crown className="absolute -top-2 w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                    )}
 
-                    {/* 2. Quick Host Action Button (Host Only) */}
-                    {isHost && (
+                    {participant.displayName.charAt(0).toUpperCase()}
+
+                    {/* Active Waveform on Speaker Avatar */}
+                    {isSpeaking && !isDisconnected && (
+                      <div className="absolute -bottom-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/90 border border-[#00E599] text-[#00E599] scale-90 shadow-md">
+                        <span className="w-0.5 h-2 bg-[#00E599] rounded-full animate-bounce" />
+                        <span
+                          className="w-0.5 h-3 bg-[#00E599] rounded-full animate-bounce"
+                          style={{ animationDelay: '0.15s' }}
+                        />
+                        <span
+                          className="w-0.5 h-1.5 bg-[#00E599] rounded-full animate-bounce"
+                          style={{ animationDelay: '0.3s' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <h3 className="mt-2 text-xs sm:text-sm font-semibold text-white tracking-wide truncate max-w-[110px] sm:max-w-[150px] text-center">
+                    {participant.displayName}
+                  </h3>
+                </div>
+
+                {/* Bottom Strip: Micro Status + Integrated Action Buttons */}
+                <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] sm:text-xs">
+                  {/* Mic Status */}
+                  <div className="flex items-center gap-1">
+                    {isDisconnected ? (
+                      <span className="flex items-center gap-1 text-rose-400 font-mono text-[10px] font-semibold">
+                        <WifiOff className="w-3 h-3" />
+                        <span>LOST</span>
+                      </span>
+                    ) : participant.microphoneState === 'ON' ? (
+                      <span className="flex items-center gap-1 text-[#00E599] font-mono text-[10px] font-semibold">
+                        <Mic className="w-3 h-3" />
+                        <span>LIVE</span>
+                      </span>
+                    ) : participant.microphoneState === 'MUTED' ? (
+                      <span className="flex items-center gap-1 text-rose-400 font-mono text-[10px]">
+                        <MicOff className="w-3 h-3 text-rose-400" />
+                        <span>MUTED</span>
+                      </span>
+                    ) : participant.microphoneState === 'CONNECTING' ? (
+                      <span className="flex items-center gap-1 text-[#8A99AD] font-mono text-[10px]">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>SYNC</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[#4E586E] font-mono text-[10px]">
+                        <MicOff className="w-3 h-3" />
+                        <span>OFF</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Direct Action Buttons on Card: Mute/Unmute, Make Host, Kick */}
+                  {!isLocal && !isDisconnected && (
+                    <div className="flex items-center gap-1">
+                      {/* 1. Direct Mute/Unmute Speaker Audio Button */}
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSelectParticipantForAction(participant);
+                          const nextVol = isAudioMutedLocally ? 100 : 0;
+                          onVolumeChange(participant.participantId, nextVol);
                         }}
-                        title="Host Actions (Transfer, Move, Kick)"
-                        aria-label="Host Actions"
-                        className="w-8 h-8 sm:w-8 sm:h-8 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-300 flex items-center justify-center transition-all cursor-pointer active:scale-90"
+                        title={isAudioMutedLocally ? 'Unmute Audio' : 'Mute Audio'}
+                        aria-label={isAudioMutedLocally ? 'Unmute Audio' : 'Mute Audio'}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer active:scale-90 ${
+                          isAudioMutedLocally
+                            ? 'bg-rose-500/20 border-rose-500/40 text-rose-300 hover:bg-rose-500/30'
+                            : 'bg-white/5 border-white/10 text-neutral-400 hover:text-white hover:bg-white/10'
+                        }`}
                       >
-                        <MoreVertical className="w-3.5 h-3.5" />
+                        {isAudioMutedLocally ? (
+                          <VolumeX className="w-3.5 h-3.5" />
+                        ) : (
+                          <Volume2 className="w-3.5 h-3.5" />
+                        )}
                       </button>
-                    )}
-                  </div>
-                )}
+
+                      {/* 2. Host Action: Make Host */}
+                      {isHost && !isParticipantHost && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onTransferHost(participant.participantId);
+                          }}
+                          title="Make Host"
+                          aria-label="Make Host"
+                          className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 transition-all cursor-pointer active:scale-90"
+                        >
+                          <Crown className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
+                      {/* 3. Host Action: Kick */}
+                      {isHost && !isParticipantHost && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onKickParticipant(participant.participantId);
+                          }}
+                          title="Kick from Party"
+                          aria-label="Kick from Party"
+                          className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 transition-all cursor-pointer active:scale-90"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

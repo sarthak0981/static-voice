@@ -112,6 +112,18 @@ app.get('*', (_req, res) => {
 io.on('connection', (socket) => {
   let currentRoomId: string | null = null;
 
+  const leaveAllCurrentRooms = () => {
+    if (currentRoomId) {
+      socket.leave(currentRoomId);
+      currentRoomId = null;
+    }
+    for (const r of socket.rooms) {
+      if (r !== socket.id) {
+        socket.leave(r);
+      }
+    }
+  };
+
   socket.on('get-ice-config', (callback) => {
     if (typeof callback === 'function') {
       callback({ iceServers: getIceServersConfig() });
@@ -121,6 +133,8 @@ io.on('connection', (socket) => {
   // 1. Create Room (with custom roomName and sanitized displayName)
   socket.on('create-room', ({ roomName, displayName, sessionToken }, callback) => {
     try {
+      leaveAllCurrentRooms();
+
       const { room, participant } = roomManager.createRoom(
         socket.id,
         roomName,
@@ -145,6 +159,8 @@ io.on('connection', (socket) => {
   // 2. Join Room (always requiring chosen displayName and valid code)
   socket.on('join-room', ({ roomId, displayName, sessionToken }, callback) => {
     try {
+      leaveAllCurrentRooms();
+
       const result = roomManager.joinRoom(roomId, socket.id, displayName, sessionToken);
       if (!result.success || !result.participant || !result.room) {
         return callback({
@@ -180,6 +196,8 @@ io.on('connection', (socket) => {
   // 3. Reconnect Session
   socket.on('reconnect-session', ({ roomId, sessionToken }, callback) => {
     try {
+      leaveAllCurrentRooms();
+
       const result = roomManager.joinRoom(roomId, socket.id, '', sessionToken);
       if (!result.success || !result.participant || !result.room) {
         return callback({ success: false, error: result.error });
@@ -401,7 +419,7 @@ io.on('connection', (socket) => {
         socket.leave(room.roomId);
 
         if (result.leavingParticipant) {
-          socket.to(room.roomId).emit('participant-left-party', {
+          io.to(room.roomId).emit('participant-left-party', {
             participantId: result.leavingParticipant.participantId,
             displayName: result.leavingParticipant.displayName
           });
@@ -439,6 +457,7 @@ io.on('connection', (socket) => {
 
     const chatMsg: ChatMessage = {
       id: 'm_' + crypto.randomBytes(4).toString('hex'),
+      roomId: room.roomId,
       senderParticipantId: sender.participantId,
       senderName: sender.displayName,
       text: cleanText,
@@ -524,7 +543,7 @@ io.on('connection', (socket) => {
         broadcastRoomState(result.room.roomId);
       } else {
         if (result.participant) {
-          socket.to(result.room.roomId).emit('participant-disconnected', {
+          io.to(result.room.roomId).emit('participant-disconnected', {
             participantId: result.participant.participantId,
             displayName: result.participant.displayName
           });
