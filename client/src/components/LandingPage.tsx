@@ -302,7 +302,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <p className="mt-12 text-xs text-static-muted font-mono tracking-wide flex items-center justify-center gap-2">
           <span>NO ACCOUNTS • END-TO-END AUDIO • ZERO RECORDINGS</span>
           <span className="text-[#4E586E]">•</span>
-          <span className="text-[#00E599] font-semibold">v1.2.0</span>
+          <span className="text-[#00E599] font-semibold">v1.3.0</span>
         </p>
       </div>
 

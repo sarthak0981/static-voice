@@ -11,17 +11,20 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Participant } from '../types/index.js';
+import { ConnectionQuality } from '../lib/webrtcDiagnostics.js';
 
 interface HostActionSheetProps {
   participant: Participant | null;
   isOpen: boolean;
   onClose: () => void;
   volume: number; // 0 to 100
+  isCurrentUserHost?: boolean;
+  connectionQuality?: ConnectionQuality;
   onVolumeChange: (participantId: string, volume: number) => void;
-  onMuteParticipant: (participantId: string) => void;
-  onTransferHost: (participantId: string) => void;
-  onRemoveFromParty: (participantId: string) => void;
-  onKickParticipant: (participantId: string) => void;
+  onMuteParticipant?: (participantId: string) => void;
+  onTransferHost?: (participantId: string) => void;
+  onRemoveFromParty?: (participantId: string) => void;
+  onKickParticipant?: (participantId: string) => void;
   onShiftLeft?: (participantId: string) => void;
   onShiftRight?: (participantId: string) => void;
   canShiftLeft?: boolean;
@@ -33,6 +36,8 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
   isOpen,
   onClose,
   volume,
+  isCurrentUserHost = false,
+  connectionQuality,
   onVolumeChange,
   onMuteParticipant,
   onTransferHost,
@@ -46,6 +51,40 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
   if (!isOpen || !participant) return null;
 
   const isMuted = participant.microphoneState === 'MUTED' || participant.microphoneState === 'OFF';
+
+  const renderQualityBadge = () => {
+    if (!connectionQuality) return null;
+    switch (connectionQuality) {
+      case 'EXCELLENT':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            Excellent
+          </span>
+        );
+      case 'GOOD':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            Good
+          </span>
+        );
+      case 'UNSTABLE':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            Unstable
+          </span>
+        );
+      case 'POOR':
+        return (
+          <span className="inline-flex items-center gap-1 text-[10px] font-mono text-rose-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+            Poor
+          </span>
+        );
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4 animate-in fade-in duration-200 select-none">
@@ -73,7 +112,7 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-bold text-white tracking-wide truncate max-w-[200px]">
+                <h3 className="text-base sm:text-lg font-bold text-white tracking-wide truncate max-w-[180px] sm:max-w-[240px]">
                   {participant.displayName}
                 </h3>
                 {participant.role === 'HOST' && (
@@ -83,9 +122,14 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs text-[#8A99AD] font-mono">
-                Participant Controls &bull; Host Master
-              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs text-[#8A99AD] font-mono">
+                  {isCurrentUserHost
+                    ? 'Participant Controls • Host Master'
+                    : 'Local Playback Volume • Only affects your speaker'}
+                </p>
+                {renderQualityBadge()}
+              </div>
             </div>
           </div>
 
@@ -129,29 +173,29 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
             <button
               type="button"
               onClick={() => onVolumeChange(participant.participantId, 0)}
-              className="flex-1 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[11px] font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
+              className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[11px] font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
             >
               Mute (0%)
             </button>
             <button
               type="button"
               onClick={() => onVolumeChange(participant.participantId, 50)}
-              className="flex-1 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[11px] font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
+              className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[11px] font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
             >
               50%
             </button>
             <button
               type="button"
               onClick={() => onVolumeChange(participant.participantId, 100)}
-              className="flex-1 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[11px] font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
+              className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[11px] font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
             >
               100%
             </button>
           </div>
         </div>
 
-        {/* Section 2: Position Shifting (Shift left / right on grid) */}
-        {(canShiftLeft || canShiftRight) && (
+        {/* Section 2: Position Shifting (Host Only) */}
+        {isCurrentUserHost && (canShiftLeft || canShiftRight) && (
           <div className="py-3 border-b border-white/10">
             <span className="text-xs font-mono text-[#8A99AD] block mb-2">
               SHIFT POSITION ON SCREEN
@@ -188,65 +232,67 @@ export const HostActionSheet: React.FC<HostActionSheetProps> = ({
           </div>
         )}
 
-        {/* Section 3: Large Thumb-Friendly Host Actions */}
-        <div className="pt-4 space-y-2.5">
-          {/* Master Mute Toggle */}
-          <button
-            type="button"
-            onClick={() => {
-              onMuteParticipant(participant.participantId);
-              onClose();
-            }}
-            disabled={isMuted}
-            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border text-xs font-mono font-semibold transition-all min-h-[48px] ${
-              isMuted
-                ? 'bg-white/5 border-white/5 text-[#4E586E] cursor-not-allowed'
-                : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 cursor-pointer active:scale-[0.98]'
-            }`}
-          >
-            <MicOff className="w-4 h-4 shrink-0" />
-            <span>{isMuted ? 'Participant is Muted' : 'Mute Microphone (Master Mute)'}</span>
-          </button>
+        {/* Section 3: Large Thumb-Friendly Host Actions (Host Only) */}
+        {isCurrentUserHost && onMuteParticipant && onTransferHost && onRemoveFromParty && onKickParticipant && (
+          <div className="pt-4 space-y-2.5">
+            {/* Master Mute Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                onMuteParticipant(participant.participantId);
+                onClose();
+              }}
+              disabled={isMuted}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border text-xs font-mono font-semibold transition-all min-h-[48px] ${
+                isMuted
+                  ? 'bg-white/5 border-white/5 text-[#4E586E] cursor-not-allowed'
+                  : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300 cursor-pointer active:scale-[0.98]'
+              }`}
+            >
+              <MicOff className="w-4 h-4 shrink-0" />
+              <span>{isMuted ? 'Participant is Muted' : 'Mute Microphone (Master Mute)'}</span>
+            </button>
 
-          {/* Transfer Host */}
-          <button
-            type="button"
-            onClick={() => {
-              onTransferHost(participant.participantId);
-              onClose();
-            }}
-            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/5 hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/30 text-xs font-mono font-semibold text-white hover:text-amber-300 transition-all min-h-[48px] cursor-pointer active:scale-[0.98]"
-          >
-            <Crown className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>Make Room Host (Transfer Ownership)</span>
-          </button>
+            {/* Transfer Host */}
+            <button
+              type="button"
+              onClick={() => {
+                onTransferHost(participant.participantId);
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/5 hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/30 text-xs font-mono font-semibold text-white hover:text-amber-300 transition-all min-h-[48px] cursor-pointer active:scale-[0.98]"
+            >
+              <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Make Room Host (Transfer Ownership)</span>
+            </button>
 
-          {/* Move Back to Lounge */}
-          <button
-            type="button"
-            onClick={() => {
-              onRemoveFromParty(participant.participantId);
-              onClose();
-            }}
-            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono font-semibold text-[#8A99AD] hover:text-white transition-all min-h-[48px] cursor-pointer active:scale-[0.98]"
-          >
-            <UserMinus className="w-4 h-4 shrink-0" />
-            <span>Move Back to Waiting Lounge</span>
-          </button>
+            {/* Move Back to Lounge */}
+            <button
+              type="button"
+              onClick={() => {
+                onRemoveFromParty(participant.participantId);
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono font-semibold text-[#8A99AD] hover:text-white transition-all min-h-[48px] cursor-pointer active:scale-[0.98]"
+            >
+              <UserMinus className="w-4 h-4 shrink-0" />
+              <span>Move Back to Waiting Lounge</span>
+            </button>
 
-          {/* Kick from Room */}
-          <button
-            type="button"
-            onClick={() => {
-              onKickParticipant(participant.participantId);
-              onClose();
-            }}
-            className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-mono font-semibold text-rose-400 transition-all min-h-[48px] cursor-pointer active:scale-[0.98]"
-          >
-            <UserX className="w-4 h-4 shrink-0" />
-            <span>Kick from Room Completely</span>
-          </button>
-        </div>
+            {/* Kick from Room */}
+            <button
+              type="button"
+              onClick={() => {
+                onKickParticipant(participant.participantId);
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-xs font-mono font-semibold text-rose-400 transition-all min-h-[48px] cursor-pointer active:scale-[0.98]"
+            >
+              <UserX className="w-4 h-4 shrink-0" />
+              <span>Kick from Room Completely</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   MoreVertical
 } from 'lucide-react';
 import { Participant } from '../types/index.js';
+import { ConnectionQuality } from '../lib/webrtcDiagnostics.js';
 
 interface PartyGridProps {
   roomName: string;
@@ -28,6 +29,7 @@ interface PartyGridProps {
   loungeCount?: number;
   onSelectParticipantForAction?: (participant: Participant) => void;
   peerVolumes?: Record<string, number>;
+  peerQualities?: Record<string, ConnectionQuality>;
 }
 
 export const PartyGrid: React.FC<PartyGridProps> = ({
@@ -41,7 +43,8 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
   onToggleLoungeCollapse,
   loungeCount = 0,
   onSelectParticipantForAction,
-  peerVolumes = {}
+  peerVolumes = {},
+  peerQualities = {}
 }) => {
   const isPartyFull = participants.length >= 8;
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -53,12 +56,11 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
   const isDraggingRef = useRef<boolean>(false);
   const touchDragIndexRef = useRef<number | null>(null);
 
-  // Desktop Drag-and-Drop Handlers
+  // Desktop Drag-and-Drop Handlers (Host Only)
   const handleDragStart = (e: React.DragEvent, index: number) => {
     if (!isHost) return;
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', index.toString());
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -79,8 +81,8 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
     e.preventDefault();
 
     const reordered = [...participants];
-    const [moved] = reordered.splice(draggedIndex, 1);
-    reordered.splice(targetIndex, 0, moved);
+    const [movedParticipant] = reordered.splice(draggedIndex, 1);
+    reordered.splice(targetIndex, 0, movedParticipant);
 
     setDraggedIndex(null);
     setDropTargetIndex(null);
@@ -95,9 +97,11 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
     setDropTargetIndex(null);
   };
 
-  // Mobile Touch Long-Press and Drag-to-Shift Handlers
+  // Touchscreen Long-Press and Drag Handling
   const handleTouchStart = (e: React.TouchEvent, participant: Participant, index: number) => {
-    if (!isHost) return;
+    const isLocal = participant.participantId === currentUserId;
+    if (isLocal) return;
+
     const touch = e.touches[0];
     if (!touch) return;
 
@@ -106,44 +110,47 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
     isDraggingRef.current = false;
     setHoldingParticipantId(participant.participantId);
 
-    // Start 650ms long-press timer for Host Mobile Action Sheet
+    // Start 600ms long-press timer for Action Sheet
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
-      // If user hasn't dragged, trigger long-press host action sheet
+      // If user hasn't dragged, trigger action sheet
       if (!isDraggingRef.current && onSelectParticipantForAction) {
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
-          navigator.vibrate(40);
+          navigator.vibrate(35);
         }
         setHoldingParticipantId(null);
         onSelectParticipantForAction(participant);
       }
-    }, 650);
+    }, 600);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isHost || touchDragIndexRef.current === null) return;
+    if (touchDragIndexRef.current === null) return;
     const touch = e.touches[0];
     if (!touch || !touchStartPosRef.current) return;
 
     const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
     const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
 
-    // If moved more than 10px, cancel long-press and activate touch shift mode
+    // If moved more than 10px, cancel long-press and activate touch shift mode (if host)
     if (dx > 10 || dy > 10) {
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
       }
-      isDraggingRef.current = true;
       setHoldingParticipantId(null);
-      setDraggedIndex(touchDragIndexRef.current);
 
-      const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-      const card = targetEl?.closest('[data-participant-index]') as HTMLElement | null;
-      if (card && card.dataset.participantIndex !== undefined) {
-        const targetIdx = parseInt(card.dataset.participantIndex, 10);
-        if (!isNaN(targetIdx) && targetIdx !== dropTargetIndex) {
-          setDropTargetIndex(targetIdx);
+      if (isHost) {
+        isDraggingRef.current = true;
+        setDraggedIndex(touchDragIndexRef.current);
+
+        const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+        const card = targetEl?.closest('[data-participant-index]') as HTMLElement | null;
+        if (card && card.dataset.participantIndex !== undefined) {
+          const targetIdx = parseInt(card.dataset.participantIndex, 10);
+          if (!isNaN(targetIdx) && targetIdx !== dropTargetIndex) {
+            setDropTargetIndex(targetIdx);
+          }
         }
       }
     }
@@ -159,94 +166,84 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
     if (!isHost || touchDragIndexRef.current === null) {
       setDraggedIndex(null);
       setDropTargetIndex(null);
+      touchDragIndexRef.current = null;
+      touchStartPosRef.current = null;
       return;
     }
 
-    const fromIdx = touchDragIndexRef.current;
-    const toIdx = dropTargetIndex;
-
-    touchDragIndexRef.current = null;
-    touchStartPosRef.current = null;
-    setDraggedIndex(null);
-    setDropTargetIndex(null);
-
-    // If dragged to a new spot, apply reorder
-    if (isDraggingRef.current && toIdx !== null && fromIdx !== toIdx) {
+    if (
+      isDraggingRef.current &&
+      draggedIndex !== null &&
+      dropTargetIndex !== null &&
+      draggedIndex !== dropTargetIndex
+    ) {
       const reordered = [...participants];
-      const [moved] = reordered.splice(fromIdx, 1);
-      reordered.splice(toIdx, 0, moved);
+      const [movedParticipant] = reordered.splice(draggedIndex, 1);
+      reordered.splice(dropTargetIndex, 0, movedParticipant);
+
       if (onReorderParty) {
         onReorderParty(reordered.map((p) => p.participantId));
       }
     }
+
+    setDraggedIndex(null);
+    setDropTargetIndex(null);
+    touchDragIndexRef.current = null;
+    touchStartPosRef.current = null;
     isDraggingRef.current = false;
   };
 
   return (
-    <section
-      className="flex-1 flex flex-col p-3 sm:p-6 overflow-y-auto pb-[max(8rem,calc(env(safe-area-inset-bottom)+5rem))]"
-      aria-label="Party Voice Area"
-    >
-      {/* Header: Clean Studio Aesthetics */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 sm:mb-6 shrink-0">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono font-bold tracking-widest text-[#00E599] uppercase">
-              ACTIVE PARTY
-            </span>
-            <span className="text-xs font-mono font-medium text-[#8A99AD] tracking-wider">
-              {participants.length} / 8
-            </span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white font-sans truncate max-w-md">
-            {roomName}
-          </h1>
+    <div className="flex-1 flex flex-col h-full bg-[#07080B] p-3 sm:p-5 overflow-y-auto select-none">
+      {/* Grid Top Bar */}
+      <div className="flex items-center justify-between mb-3 sm:mb-4 px-1">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#00E599] animate-pulse" />
+          <h2 className="text-xs sm:text-sm font-bold font-mono tracking-wider text-white uppercase truncate max-w-[200px] sm:max-w-xs">
+            {roomName || 'Party Voice'}
+          </h2>
+          <span className="text-[10px] sm:text-xs font-mono text-[#8A99AD] bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
+            {participants.length} / 8
+          </span>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Host Button to Unhide Lounge if collapsed */}
+        <div className="flex items-center gap-2">
+          {/* Collapse Lounge toggle on desktop for host */}
           {isHost && isLoungeCollapsed && onToggleLoungeCollapse && (
             <button
               type="button"
               onClick={onToggleLoungeCollapse}
-              title="Unhide Lounge Area"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[#8A99AD] hover:text-white text-xs font-mono transition-all duration-200 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
             >
-              <PanelRightOpen className="w-3.5 h-3.5 text-[#00E599]" />
-              <span>SHOW LOUNGE</span>
-              {loungeCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-[#00E599]/20 text-[#00E599] text-[10px] font-bold font-mono">
-                  {loungeCount}
-                </span>
-              )}
+              <PanelRightOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span>Lounge ({loungeCount})</span>
             </button>
           )}
 
-          {isPartyFull && (
-            <span className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#00E599]/10 border border-[#00E599]/30 text-[#00E599] text-xs font-mono font-medium">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>ROOM PACKED</span>
-            </span>
+          {/* Share Room Code button */}
+          {!isPartyFull && (
+            <button
+              type="button"
+              onClick={onOpenShareModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-white transition-colors cursor-pointer active:scale-95"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#00E599]" />
+              <span className="hidden sm:inline">INVITE</span>
+            </button>
           )}
         </div>
       </div>
 
-      {/* Mobile Host Tip */}
-      {isHost && participants.length > 1 && (
-        <div className="sm:hidden mb-3 px-1 flex items-center justify-between text-[11px] font-mono text-[#4E586E]">
-          <span>💡 Hold card for volume & host controls</span>
-          <span>Drag to reorder</span>
-        </div>
-      )}
-
-      {/* Main Party Grid */}
-      {participants.length === 1 && isHost ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 rounded-2xl border border-dashed border-white/10 bg-white/2">
-          <div className="w-16 h-16 rounded-2xl bg-[#12141C] border border-white/10 flex items-center justify-center mb-4 text-[#00E599]">
-            <Volume2 className="w-8 h-8 opacity-80" />
+      {/* Grid Canvas: 1 to 8 participants */}
+      {participants.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-center p-6 border border-dashed border-white/10 rounded-2xl sm:rounded-3xl bg-[#090B10]/50">
+          <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-[#8A99AD] mb-3">
+            <Mic className="w-6 h-6" />
           </div>
-          <h3 className="text-lg font-semibold text-white mb-2">You're the only one here.</h3>
-          <p className="text-sm text-[#8A99AD] max-w-sm mb-6 font-light">
+          <h3 className="text-sm font-mono font-bold text-white mb-1">
+            Party is empty
+          </h3>
+          <p className="text-xs text-[#8A99AD] font-mono max-w-xs mb-4">
             Share the 6-character room code to start talking in real time without downloads or accounts.
           </p>
           <button
@@ -267,6 +264,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
             const isDropTarget = dropTargetIndex === index && draggedIndex !== index;
             const isHolding = holdingParticipantId === participant.participantId;
             const userVol = peerVolumes[participant.participantId] ?? 100;
+            const quality = peerQualities[participant.participantId] || peerQualities[participant.socketId];
 
             return (
               <div
@@ -281,12 +279,12 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
                 onContextMenu={(e) => {
-                  if (isHost && onSelectParticipantForAction) {
+                  if (!isLocal && onSelectParticipantForAction) {
                     e.preventDefault();
                     onSelectParticipantForAction(participant);
                   }
                 }}
-                className={`relative flex flex-col justify-between p-3.5 sm:p-5 rounded-2xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
+                className={`relative flex flex-col justify-between p-3.5 sm:p-5 rounded-2xl transition-all duration-200 ease-out select-none ${
                   isBeingDragged ? 'opacity-40 scale-95 ring-2 ring-[#00E599]' : ''
                 } ${isDropTarget ? 'scale-105 ring-2 ring-[#00E599]/80 bg-[#00E599]/5' : ''} ${
                   isHolding ? 'scale-95 ring-2 ring-[#00E599] bg-white/10' : ''
@@ -296,7 +294,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                     : 'bg-[#0E1017]/90 border border-white/8 hover:border-white/20 shadow-md shadow-black/30'
                 } ${
                   isSpeaking
-                    ? 'border-[#00E599]/80 shadow-[0_0_24px_rgba(0,229,153,0.18)] bg-[#10161A]/90'
+                    ? 'border-[#00E599]/80 ring-1 ring-[#00E599]/50 shadow-[0_0_20px_rgba(0,229,153,0.16)] bg-[#10161A]/90'
                     : ''
                 }`}
               >
@@ -314,24 +312,47 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                         YOU
                       </span>
                     )}
-                    {/* Volume Pill if adjusted */}
+                    {/* Volume Pill if adjusted locally */}
                     {!isLocal && userVol !== 100 && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-mono text-[#8A99AD]">
-                        {userVol === 0 ? <VolumeX className="w-2.5 h-2.5 text-rose-400" /> : <Volume2 className="w-2.5 h-2.5" />}
+                        {userVol === 0 ? (
+                          <VolumeX className="w-2.5 h-2.5 text-rose-400" />
+                        ) : (
+                          <Volume2 className="w-2.5 h-2.5" />
+                        )}
                         <span>{userVol}%</span>
+                      </span>
+                    )}
+                    {/* Subtle Connection Health Warning (Only shown when unstable or poor) */}
+                    {!isLocal && quality === 'UNSTABLE' && (
+                      <span
+                        title="Unstable connection (high jitter/latency)"
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-[9px] font-mono text-amber-300"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                        <span>UNSTABLE</span>
+                      </span>
+                    )}
+                    {!isLocal && quality === 'POOR' && (
+                      <span
+                        title="Poor connection (packet loss detected)"
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/20 text-[9px] font-mono text-rose-300"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+                        <span>POOR</span>
                       </span>
                     )}
                   </div>
 
-                  {/* Desktop More Options Button (Host only) */}
-                  {isHost && onSelectParticipantForAction && (
+                  {/* Desktop More Options Button (Universal: Volume for all, Host actions for host) */}
+                  {!isLocal && onSelectParticipantForAction && (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelectParticipantForAction(participant);
                       }}
-                      title="Participant Controls"
+                      title={isHost ? 'Host & Volume Controls' : 'Adjust Playback Volume'}
                       className="hidden sm:flex w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 items-center justify-center text-[#8A99AD] hover:text-white transition-colors cursor-pointer"
                     >
                       <MoreVertical className="w-3.5 h-3.5" />
@@ -339,21 +360,21 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                   )}
                 </div>
 
-                {/* Card Center: Minimal Avatar with Razor-Thin Speaking Ring */}
+                {/* Card Center: Minimal Avatar with Organic Waveform */}
                 <div
                   onClick={() => {
-                    if (isHost && onSelectParticipantForAction) {
+                    if (!isLocal && onSelectParticipantForAction) {
                       onSelectParticipantForAction(participant);
                     }
                   }}
                   className="flex flex-col items-center justify-center my-2 sm:my-3 cursor-pointer"
                 >
                   <div
-                    className={`relative w-14 h-14 sm:w-18 sm:h-18 rounded-2xl flex items-center justify-center text-lg sm:text-2xl font-bold font-mono tracking-wider transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                    className={`relative w-14 h-14 sm:w-18 sm:h-18 rounded-2xl flex items-center justify-center text-lg sm:text-2xl font-bold font-mono tracking-wider transition-all duration-200 ease-out ${
                       isParticipantHost
                         ? 'border border-amber-400/40 text-amber-300 bg-amber-500/15'
                         : isSpeaking
-                        ? 'bg-[#00E599] text-black ring-4 ring-[#00E599]/30 shadow-[0_0_20px_rgba(0,229,153,0.3)] scale-105'
+                        ? 'bg-[#00E599] text-black ring-4 ring-[#00E599]/30 shadow-[0_0_18px_rgba(0,229,153,0.25)] scale-105'
                         : 'bg-[#151824] text-white border border-white/10'
                     }`}
                   >
@@ -365,7 +386,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
 
                     {/* Active Waveform on Speaker Avatar */}
                     {isSpeaking && (
-                      <div className="absolute -bottom-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/90 border border-[#00E599] text-[#00E599] scale-90">
+                      <div className="absolute -bottom-1.5 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-black/90 border border-[#00E599] text-[#00E599] scale-90 shadow-md">
                         <span className="w-0.5 h-2 bg-[#00E599] rounded-full animate-bounce" />
                         <span
                           className="w-0.5 h-3 bg-[#00E599] rounded-full animate-bounce"
@@ -410,9 +431,9 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                     )}
                   </div>
 
-                  {/* Minimal Status Text */}
-                  <span className="text-[10px] font-mono text-[#4E586E]">
-                    {isSpeaking ? 'TALKING' : 'IDLE'}
+                  {/* Position number on desktop grid */}
+                  <span className="text-[10px] font-mono text-[#4E586E] hidden sm:inline">
+                    #{index + 1}
                   </span>
                 </div>
               </div>
@@ -420,6 +441,6 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
           })}
         </div>
       )}
-    </section>
+    </div>
   );
 };

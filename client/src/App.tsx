@@ -23,6 +23,8 @@ import { ZenLoungeView } from './components/ZenLoungeView.js';
 import { ControlBar } from './components/ControlBar.js';
 import { NotificationCapsule, NotificationItem } from './components/NotificationCapsule.js';
 import { HostActionSheet } from './components/HostActionSheet.js';
+import { VoiceDiagnosticsModal } from './components/VoiceDiagnosticsModal.js';
+import { ConnectionQuality, PeerConnectionStats } from './lib/webrtcDiagnostics.js';
 import {
   EndRoomModal,
   ShareModal,
@@ -112,6 +114,29 @@ export function App() {
   const [peerVolumes, setPeerVolumes] = useState<Record<string, number>>({});
   const [selectedParticipantForAction, setSelectedParticipantForAction] = useState<Participant | null>(null);
 
+  // WebRTC Diagnostics & Quality Tracking
+  const [peerQualities, setPeerQualities] = useState<Record<string, ConnectionQuality>>({});
+  const [diagnosticsStats, setDiagnosticsStats] = useState<Map<string, PeerConnectionStats>>(new Map());
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState<boolean>(false);
+
+  // Developer diagnostics shortcut (Ctrl+Shift+D or Cmd+Shift+D) & URL check (?diag=1)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'D' || e.key === 'd')) {
+        e.preventDefault();
+        setIsDiagnosticsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('diag') === '1' || urlParams.get('debug') === 'voice') {
+      setIsDiagnosticsOpen(true);
+    }
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleVolumeChange = useCallback((participantId: string, volume: number) => {
     setPeerVolumes((prev) => ({ ...prev, [participantId]: volume }));
     webrtcEngineRef.current?.setPeerVolume(participantId, volume / 100);
@@ -163,6 +188,12 @@ export function App() {
     const engine = new WebRTCVoiceEngine({
       onMicrophoneStateChange: (state) => setMicrophoneState(state),
       onSpeakingChange: (_isSpeaking) => {},
+      onPeerQualityChange: (peerId, quality) => {
+        setPeerQualities((prev) => ({ ...prev, [peerId]: quality }));
+      },
+      onDiagnosticsUpdate: (stats) => {
+        setDiagnosticsStats(stats);
+      },
       onAutoplayBlocked: (blocked) => {
         if (blocked) {
           queueNotification({
@@ -757,6 +788,7 @@ export function App() {
         invitationsOpen={roomState.room.invitationsOpen}
         connectionStatus={connectionStatus}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        onToggleDiagnostics={() => setIsDiagnosticsOpen((prev) => !prev)}
       />
 
       {/* Microphone Permission Banner if in party and mic is off/denied */}
@@ -784,6 +816,7 @@ export function App() {
           onToggleLoungeCollapse={handleToggleLounge}
           loungeCount={roomState.lounge.length}
           peerVolumes={peerVolumes}
+          peerQualities={peerQualities}
           onSelectParticipantForAction={setSelectedParticipantForAction}
         />
 
@@ -875,12 +908,18 @@ export function App() {
         onClose={() => setIsHostPromotedModalOpen(false)}
       />
 
-      {/* Mobile / Touch Host Action Sheet */}
+      {/* Mobile / Touch Participant Action Sheet (Volume for guests, Host controls for host) */}
       {selectedParticipantForAction && (
         <HostActionSheet
           isOpen={!!selectedParticipantForAction}
           onClose={() => setSelectedParticipantForAction(null)}
           participant={selectedParticipantForAction}
+          isCurrentUserHost={isHost}
+          connectionQuality={
+            selectedParticipantForAction
+              ? peerQualities[selectedParticipantForAction.participantId] || peerQualities[selectedParticipantForAction.socketId]
+              : undefined
+          }
           volume={peerVolumes[selectedParticipantForAction.participantId] ?? 100}
           onVolumeChange={handleVolumeChange}
           onMuteParticipant={handleMuteParticipant}
@@ -900,6 +939,17 @@ export function App() {
           }
         />
       )}
+
+      {/* Developer WebRTC Diagnostics HUD (Ctrl+Shift+D or ?diag=1) */}
+      <VoiceDiagnosticsModal
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+        statsMap={diagnosticsStats}
+        localMicrophoneState={microphoneState}
+        isLocalMuted={microphoneState === 'MUTED'}
+        isLocalSpeaking={roomState?.currentUser.isSpeaking ?? false}
+        participants={roomState?.party || []}
+      />
 
       <EndRoomModal
         isOpen={isEndRoomModalOpen}

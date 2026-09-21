@@ -1,5 +1,7 @@
 import { getSocket } from './socket.js';
 import { MicrophoneState, SignalData } from '../types/index.js';
+import { RemoteAudioManager } from './remoteAudioManager.js';
+import { WebRTCDiagnostics, ConnectionQuality, PeerConnectionStats } from './webrtcDiagnostics.js';
 
 export interface WebRTCVoiceEngineCallbacks {
   onMicrophoneStateChange: (state: MicrophoneState) => void;
@@ -7,37 +9,26 @@ export interface WebRTCVoiceEngineCallbacks {
   onAudioLevelChange?: (level: number) => void;
   onAutoplayBlocked?: (isBlocked: boolean) => void;
   onConnectionStateChange?: (remoteSocketId: string, state: RTCPeerConnectionState) => void;
+  onPeerQualityChange?: (peerId: string, quality: ConnectionQuality) => void;
+  onDiagnosticsUpdate?: (stats: Map<string, PeerConnectionStats>) => void;
   onError: (errorMessage: string) => void;
 }
 
 /**
- * Production-grade WebRTC ICE servers configuration.
- * Includes Google STUN, Cloudflare STUN, and global OpenRelay TURN servers (UDP/TCP/TLS).
- * TURN relay is essential for establishing connections across Carrier-Grade NATs (CGNAT),
- * mobile 4G/5G carriers (Jio, Airtel, Vi, etc.), and restrictive firewalls.
+ * Default fallback STUN servers. Production TURN relay configuration is dynamically
+ * retrieved from the server (/api/ice-config) based on environment variables.
  */
-export const ICE_SERVERS: RTCIceServer[] = [
+export const DEFAULT_STUN_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  {
-    urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:443',
-      'turn:openrelay.metered.ca:443?transport=tcp',
-      'turns:openrelay.metered.ca:443?transport=tcp'
-    ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject'
-  }
+  { urls: 'stun:stun.cloudflare.com:3478' }
 ];
 
 interface PeerSession {
   remoteSocketId: string;
   remoteParticipantId?: string;
   pc: RTCPeerConnection;
-  audioElement: HTMLAudioElement;
   pendingCandidates: RTCIceCandidateInit[];
   makingOffer: boolean;
   ignoreOffer: boolean;
@@ -57,67 +48,130 @@ export class WebRTCVoiceEngine {
   private peersBySocketId: Map<string, PeerSession> = new Map();
   private peersByParticipantId: Map<string, PeerSession> = new Map();
 
+  // Centralized Audio Manager for all remote streams
+  private remoteAudioManager: RemoteAudioManager;
+
+  // Real-time diagnostics & getStats() monitor
+  private diagnostics: WebRTCDiagnostics;
+
+  // Dynamic ICE server list (STUN + server-provided TURN)
+  private iceServers: RTCIceServer[] = DEFAULT_STUN_SERVERS;
+
   private isMuted: boolean = false;
   private isSpeaking: boolean = false;
-  private isAutoplayBlocked: boolean = false;
   private speechDebounceTimer: NodeJS.Timeout | null = null;
   private callbacks: WebRTCVoiceEngineCallbacks;
   private globalUnlockListenerBound: boolean = false;
+  private deviceChangeListenerBound: boolean = false;
+  private onlineListenerBound: boolean = false;
 
-  // Volume control per peer and master
-  private peerVolumes: Map<string, number> = new Map();
-  private masterVolume: number = 1.0;
+  constructor(callbacks: WebRTCVoiceEngineCallbacks) {
+    this.callbacks = callbacks;
+
+    // Initialize centralized remote audio manager
+    this.remoteAudioManager = new RemoteAudioManager({
+      onAutoplayBlocked: (isBlocked) => {
+        this.callbacks.onAutoplayBlocked?.(isBlocked);
+      },
+      onAudioPlaybackStarted: (participantId) => {
+        this.logVoice('remote audio playback started', { participantId });
+      },
+      onAudioPlaybackFailed: (participantId, err) => {
+        this.logVoice('remote audio playback failed', { participantId, err });
+      }
+    });
+
+    // Initialize diagnostics
+    this.diagnostics = new WebRTCDiagnostics({
+      onQualityChanged: (peerId, quality) => {
+        this.callbacks.onPeerQualityChange?.(peerId, quality);
+      },
+      onStatsUpdated: (stats) => {
+        this.callbacks.onDiagnosticsUpdate?.(stats);
+      }
+    });
+
+    this.fetchIceConfiguration();
+    this.setupSocketListeners();
+    this.registerGlobalUnlockListeners();
+    this.registerDeviceAndNetworkListeners();
+    this.startDiagnosticsPolling();
+  }
+
+  /**
+   * Structured milestone logger that avoids production console spam
+   */
+  private logVoice(event: string, details?: any) {
+    if (details !== undefined) {
+      console.log(`[STATIC Voice] ${event}`, details);
+    } else {
+      console.log(`[STATIC Voice] ${event}`);
+    }
+  }
+
+  /**
+   * Fetches dynamic ICE configuration from backend (with TURN fallback)
+   */
+  private async fetchIceConfiguration() {
+    try {
+      const socket = getSocket();
+      if (socket.connected) {
+        socket.emit('get-ice-config', (res: any) => {
+          if (res && res.iceServers && res.iceServers.length > 0) {
+            this.iceServers = res.iceServers;
+            this.logVoice('Loaded dynamic ICE servers from socket', { count: this.iceServers.length });
+          }
+        });
+      }
+
+      // Also support HTTP GET fallback
+      const resp = await fetch('/api/ice-config').catch(() => null);
+      if (resp && resp.ok) {
+        const data = await resp.json();
+        if (data && data.iceServers && data.iceServers.length > 0) {
+          this.iceServers = data.iceServers;
+          this.logVoice('Loaded dynamic ICE servers from HTTP', { count: this.iceServers.length });
+        }
+      }
+    } catch (_) {
+      // Fallback stays as DEFAULT_STUN_SERVERS
+    }
+  }
 
   /**
    * Sets individual playback volume for a specific participant (0.0 to 1.0)
    */
   public setPeerVolume(id: string, volume: number): void {
-    const clamped = Math.max(0, Math.min(1, volume));
-    this.peerVolumes.set(id, clamped);
-
-    let peer = this.peersBySocketId.get(id);
-    if (!peer) {
-      peer = this.peersByParticipantId.get(id);
-    }
-    if (peer && peer.audioElement) {
-      peer.audioElement.volume = clamped * this.masterVolume;
-    }
+    const peer = this.peersBySocketId.get(id) || this.peersByParticipantId.get(id);
+    const participantId = peer?.remoteParticipantId || id;
+    this.remoteAudioManager.setPeerVolume(participantId, volume);
   }
 
   /**
    * Gets individual playback volume for a specific participant (0.0 to 1.0, default 1.0)
    */
   public getPeerVolume(id: string): number {
-    return this.peerVolumes.get(id) ?? 1.0;
+    const peer = this.peersBySocketId.get(id) || this.peersByParticipantId.get(id);
+    const participantId = peer?.remoteParticipantId || id;
+    return this.remoteAudioManager.getPeerVolume(participantId);
   }
 
   /**
    * Sets master output volume scaling across all remote participants (0.0 to 1.0)
    */
   public setMasterVolume(volume: number): void {
-    this.masterVolume = Math.max(0, Math.min(1, volume));
-    for (const [socketId, peer] of this.peersBySocketId.entries()) {
-      const pId = peer.remoteParticipantId;
-      const userVol = (pId ? this.peerVolumes.get(pId) : undefined) ?? (this.peerVolumes.get(socketId) ?? 1.0);
-      peer.audioElement.volume = userVol * this.masterVolume;
-    }
+    this.remoteAudioManager.setMasterVolume(volume);
   }
 
   /**
    * Gets master output volume
    */
   public getMasterVolume(): number {
-    return this.masterVolume;
-  }
-
-  constructor(callbacks: WebRTCVoiceEngineCallbacks) {
-    this.callbacks = callbacks;
-    this.setupSocketListeners();
-    this.registerGlobalUnlockListeners();
+    return this.remoteAudioManager.getMasterVolume();
   }
 
   /**
-   * Initializes local microphone stream and audio analysis for VAD
+   * Initializes local microphone stream with 48 kHz mono native processing
    */
   public async startMicrophone(): Promise<boolean> {
     if (
@@ -151,14 +205,29 @@ export class WebRTCVoiceEngine {
         this.localStream = stream;
         this.isMuted = false;
 
-        // Web Audio API real-time speech level analyzer
+        this.logVoice('microphone started', {
+          tracks: stream.getAudioTracks().map((t) => ({
+            label: t.label,
+            settings: t.getSettings()
+          }))
+        });
+
+        // Attach track onended watcher for unexpected disconnection
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.onended = () => {
+            this.logVoice('Local audio track ended. Attempting recovery...');
+            this.recoverMicrophoneStream();
+          };
+        }
+
+        // Web Audio real-time speech level analyzer (passive, non-intrusive)
         this.setupAudioAnalysis(stream);
 
         // Sync local track to all active peer connections
         for (const peer of this.peersBySocketId.values()) {
           this.syncLocalTrackToPeer(peer);
           if (peer.pc.signalingState === 'stable') {
-            console.log('[STATIC WebRTC] Renegotiating offer after acquiring microphone for peer:', peer.remoteSocketId);
             this.createOffer(peer.remoteSocketId, peer.remoteParticipantId);
           }
         }
@@ -167,7 +236,7 @@ export class WebRTCVoiceEngine {
         getSocket().emit('update-mic-state', { microphoneState: 'ON' });
         return stream;
       } catch (err: any) {
-        console.warn('[STATIC WebRTC] Microphone access error:', err);
+        console.warn('[STATIC Voice] Microphone access error:', err);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           this.callbacks.onMicrophoneStateChange('DENIED');
           getSocket().emit('update-mic-state', { microphoneState: 'DENIED' });
@@ -185,6 +254,45 @@ export class WebRTCVoiceEngine {
 
     const result = await this.micStartingPromise;
     return !!result;
+  }
+
+  /**
+   * Recovers microphone stream on device disconnection or track termination
+   */
+  private async recoverMicrophoneStream() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 48000 }
+        },
+        video: false
+      });
+
+      this.localStream = stream;
+      const track = stream.getAudioTracks()[0];
+      if (track) {
+        track.enabled = !this.isMuted;
+        track.onended = () => this.recoverMicrophoneStream();
+
+        // Hot-replace track across all senders without renegotiation
+        for (const peer of this.peersBySocketId.values()) {
+          const sender = peer.pc.getSenders().find((s) => s.track && s.track.kind === 'audio');
+          if (sender) {
+            sender.replaceTrack(track).catch(() => {});
+          }
+        }
+
+        // Reconnect analyzer
+        this.setupAudioAnalysis(stream);
+        this.logVoice('Seamlessly recovered microphone on audio device change.');
+      }
+    } catch (e) {
+      console.warn('[STATIC Voice] Unable to recover microphone automatically:', e);
+    }
   }
 
   /**
@@ -234,7 +342,8 @@ export class WebRTCVoiceEngine {
   }
 
   /**
-   * Real-time Voice Activity Detection (VAD) using AnalyserNode
+   * Real-time Voice Activity Detection (VAD) with hysteresis and fast attack / smooth release.
+   * Does NOT alter the transmitted microphone stream.
    */
   private setupAudioAnalysis(stream: MediaStream) {
     try {
@@ -251,10 +360,14 @@ export class WebRTCVoiceEngine {
       const source = this.audioContext.createMediaStreamSource(stream);
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
-      this.analyser.smoothingTimeConstant = 0.4;
+      this.analyser.smoothingTimeConstant = 0.3; // Low latency envelope
       source.connect(this.analyser);
 
       const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+
+      // Hysteresis thresholds for natural, non-flickering speaking indicator
+      const TALK_START_THRESHOLD = 0.10;
+      const TALK_STOP_THRESHOLD = 0.05;
 
       const checkVolume = () => {
         if (!this.analyser || this.isMuted) {
@@ -275,9 +388,8 @@ export class WebRTCVoiceEngine {
           this.callbacks.onAudioLevelChange(normalized);
         }
 
-        const isCurrentlyTalking = normalized > 0.12;
-
-        if (isCurrentlyTalking) {
+        if (normalized >= TALK_START_THRESHOLD) {
+          // Fast attack: immediate transition to speaking
           if (!this.isSpeaking) {
             this.setSpeaking(true);
           }
@@ -285,11 +397,14 @@ export class WebRTCVoiceEngine {
             clearTimeout(this.speechDebounceTimer);
             this.speechDebounceTimer = null;
           }
-        } else if (this.isSpeaking && !this.speechDebounceTimer) {
-          this.speechDebounceTimer = setTimeout(() => {
-            this.setSpeaking(false);
-            this.speechDebounceTimer = null;
-          }, 400);
+        } else if (normalized < TALK_STOP_THRESHOLD && this.isSpeaking) {
+          // Smooth release: hold for 350ms before releasing speaking indicator
+          if (!this.speechDebounceTimer) {
+            this.speechDebounceTimer = setTimeout(() => {
+              this.setSpeaking(false);
+              this.speechDebounceTimer = null;
+            }, 350);
+          }
         }
 
         this.animationFrameId = requestAnimationFrame(checkVolume);
@@ -297,7 +412,7 @@ export class WebRTCVoiceEngine {
 
       this.animationFrameId = requestAnimationFrame(checkVolume);
     } catch (e) {
-      console.warn('[STATIC WebRTC] Audio analysis not supported:', e);
+      console.warn('[STATIC Voice] Audio analysis not supported:', e);
     }
   }
 
@@ -310,33 +425,39 @@ export class WebRTCVoiceEngine {
   }
 
   /**
-   * Persistent invisible DOM container for remote audio playback.
-   * Uses 1px dimensions and opacity: 0.01 so iOS WebKit and Android Chrome
-   * consider it an active layout element and never suspend or sleep media playback.
+   * Prioritizes Opus codec on transceivers and configures optimal speech bitrate
    */
-  private getOrCreateAudioContainer(): HTMLElement {
-    let container = document.getElementById('static-remote-audio-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'static-remote-audio-container';
-      container.setAttribute('aria-hidden', 'true');
-      container.style.position = 'fixed';
-      container.style.bottom = '0px';
-      container.style.left = '0px';
-      container.style.width = '1px';
-      container.style.height = '1px';
-      container.style.opacity = '0.01';
-      container.style.pointerEvents = 'none';
-      container.style.overflow = 'hidden';
-      container.style.zIndex = '-1';
-      document.body.appendChild(container);
+  private configureTransceiverCodecAndBitrate(pc: RTCPeerConnection, transceiver: RTCRtpTransceiver) {
+    // 1. Prioritize Opus codec if supported
+    if (typeof RTCRtpSender.getCapabilities === 'function') {
+      const caps = RTCRtpSender.getCapabilities('audio');
+      if (caps && caps.codecs) {
+        const opusCodecs = caps.codecs.filter((c) => c.mimeType.toLowerCase() === 'audio/opus');
+        const nonOpus = caps.codecs.filter((c) => c.mimeType.toLowerCase() !== 'audio/opus');
+        if (opusCodecs.length > 0 && typeof transceiver.setCodecPreferences === 'function') {
+          try {
+            transceiver.setCodecPreferences([...opusCodecs, ...nonOpus]);
+          } catch (_) {}
+        }
+      }
     }
-    return container;
+
+    // 2. Set optimal speech bitrate (40 kbps Opus) with high network priority
+    try {
+      const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'audio');
+      if (sender) {
+        const params = sender.getParameters();
+        if (params.encodings && params.encodings.length > 0) {
+          params.encodings[0].maxBitrate = 40000;
+          params.encodings[0].networkPriority = 'high';
+          sender.setParameters(params).catch(() => {});
+        }
+      }
+    } catch (_) {}
   }
 
   /**
-   * Synchronizes local microphone track to peer's audio transceiver or sender.
-   * Uses Unified Plan transceiver management and W3C setParameters for audio bitrates.
+   * Synchronizes local microphone track directly to peer's audio transceiver
    */
   private syncLocalTrackToPeer(peer: PeerSession) {
     const pc = peer.pc;
@@ -346,9 +467,10 @@ export class WebRTCVoiceEngine {
     if (!audioTrack || audioTrack.readyState !== 'live') return;
 
     const transceivers = pc.getTransceivers();
-    const audioTransceiver = transceivers.find((t) =>
-      (t.sender.track && t.sender.track.kind === 'audio') ||
-      (t.receiver.track && t.receiver.track.kind === 'audio')
+    const audioTransceiver = transceivers.find(
+      (t) =>
+        (t.sender.track && t.sender.track.kind === 'audio') ||
+        (t.receiver.track && t.receiver.track.kind === 'audio')
     );
 
     if (audioTransceiver) {
@@ -357,29 +479,21 @@ export class WebRTCVoiceEngine {
       }
       if (audioTransceiver.sender.track?.id !== audioTrack.id) {
         audioTransceiver.sender.replaceTrack(audioTrack).catch((err) => {
-          console.warn('[STATIC WebRTC] replaceTrack warning:', err);
+          console.warn('[STATIC Voice] replaceTrack warning:', err);
         });
       }
+      this.configureTransceiverCodecAndBitrate(pc, audioTransceiver);
     } else {
       try {
-        pc.addTrack(audioTrack, this.localStream);
+        const sender = pc.addTrack(audioTrack, this.localStream);
+        const addedTransceiver = pc.getTransceivers().find((t) => t.sender === sender);
+        if (addedTransceiver) {
+          this.configureTransceiverCodecAndBitrate(pc, addedTransceiver);
+        }
       } catch (e) {
-        console.warn('[STATIC WebRTC] addTrack warning:', e);
+        console.warn('[STATIC Voice] addTrack warning:', e);
       }
     }
-
-    // Set high-fidelity voice bitrate and priority via W3C setParameters
-    try {
-      const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'audio');
-      if (sender) {
-        const params = sender.getParameters();
-        if (params.encodings && params.encodings.length > 0) {
-          params.encodings[0].maxBitrate = 64000;
-          params.encodings[0].networkPriority = 'high';
-          sender.setParameters(params).catch(() => {});
-        }
-      }
-    } catch (_) {}
   }
 
   /**
@@ -405,30 +519,14 @@ export class WebRTCVoiceEngine {
       return existing;
     }
 
-    console.log('[STATIC WebRTC] Creating new RTCPeerConnection for peer:', remoteSocketId, remoteParticipantId);
+    this.logVoice('peer created', { remoteSocketId, remoteParticipantId });
 
     const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS,
-      iceTransportPolicy: 'all',
+      iceServers: this.iceServers,
+      iceTransportPolicy: 'all', // direct P2P preferred, TURN relay fallback
       bundlePolicy: 'max-bundle',
       rtcpMuxPolicy: 'require'
     });
-
-    const audio = document.createElement('audio');
-    audio.autoplay = true;
-    (audio as any).playsInline = true;
-    audio.setAttribute('playsinline', 'true');
-    audio.setAttribute('webkit-playsinline', 'true');
-    const userVol = (remoteParticipantId ? this.peerVolumes.get(remoteParticipantId) : undefined) ?? (this.peerVolumes.get(remoteSocketId) ?? 1.0);
-    audio.volume = userVol * this.masterVolume;
-    audio.muted = false;
-
-    if (typeof (audio as any).setSinkId === 'function') {
-      (audio as any).setSinkId('default').catch(() => {});
-    }
-
-    const container = this.getOrCreateAudioContainer();
-    container.appendChild(audio);
 
     // Symmetric politeness: compare socket IDs
     const localSocketId = getSocket().id || '';
@@ -438,7 +536,6 @@ export class WebRTCVoiceEngine {
       remoteSocketId,
       remoteParticipantId,
       pc,
-      audioElement: audio,
       pendingCandidates: [],
       makingOffer: false,
       ignoreOffer: false,
@@ -454,7 +551,7 @@ export class WebRTCVoiceEngine {
     // Attach local audio track if microphone is currently available
     this.syncLocalTrackToPeer(session);
 
-    // ICE Candidates
+    // ICE Candidate Gathering
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         getSocket().emit('signal-peer', {
@@ -463,80 +560,63 @@ export class WebRTCVoiceEngine {
           signal: event.candidate.toJSON(),
           type: 'ice-candidate'
         });
+      } else {
+        this.logVoice('ICE gathering complete for peer', { remoteSocketId });
       }
     };
 
-    // Remote Audio Stream
+    // Remote Audio Track Handling via Centralized RemoteAudioManager
     pc.ontrack = (event) => {
-      console.log('[STATIC WebRTC] Remote audio track received:', {
-        peerSocketId: remoteSocketId,
-        id: event.track.id,
+      const participantId = session.remoteParticipantId || remoteSocketId;
+      this.logVoice('remote track received', {
+        participantId,
+        remoteSocketId,
+        trackId: event.track.id,
         kind: event.track.kind,
-        readyState: event.track.readyState,
-        muted: event.track.muted
+        readyState: event.track.readyState
       });
 
-      const remoteStream = event.streams && event.streams[0]
-        ? event.streams[0]
-        : new MediaStream([event.track]);
+      const remoteStream =
+        event.streams && event.streams[0]
+          ? event.streams[0]
+          : new MediaStream([event.track]);
 
-      session.audioElement.srcObject = remoteStream;
-
-      const playAudio = () => {
-        session.audioElement.play()
-          .then(() => {
-            console.log('[STATIC WebRTC] Remote audio playback active for peer:', remoteSocketId);
-            if (this.isAutoplayBlocked) {
-              this.isAutoplayBlocked = false;
-              this.callbacks.onAutoplayBlocked?.(false);
-            }
-          })
-          .catch((err) => {
-            console.warn('[STATIC WebRTC] Autoplay blocked for peer:', remoteSocketId, err?.name);
-            this.handleAutoplayFailure();
-          });
-      };
-
-      playAudio();
-
-      event.track.onunmute = () => {
-        console.log('[STATIC WebRTC] Remote track unmuted for peer:', remoteSocketId);
-        if (session.audioElement.paused) {
-          playAudio();
-        }
-      };
-
-      event.track.onended = () => {
-        console.log('[STATIC WebRTC] Remote track ended for peer:', remoteSocketId);
-      };
+      this.remoteAudioManager.attachRemoteStream(participantId, remoteStream);
     };
 
-    // Connection State Monitoring & Self-Healing
+    // Connection State Monitoring & Automatic ICE Reconnection
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      console.log(`[STATIC WebRTC] Connection state for peer ${remoteSocketId}: ${state}`);
+      this.logVoice(`Connection state for peer ${remoteSocketId}: ${state}`);
       this.callbacks.onConnectionStateChange?.(remoteSocketId, state);
 
       if (state === 'connected') {
+        this.logVoice('ICE connected', { remoteSocketId });
         if (session.iceRestartTimeout) {
           clearTimeout(session.iceRestartTimeout);
           session.iceRestartTimeout = undefined;
         }
-      } else if (state === 'failed') {
-        console.warn(`[STATIC WebRTC] Connection failed for peer ${remoteSocketId}. Triggering ICE restart in 1s...`);
+      } else if (state === 'disconnected') {
+        this.logVoice('ICE disconnected (temporary network blip)', { remoteSocketId });
+        // Attempt ICE restart if disconnected for more than 2.5 seconds
         if (!session.iceRestartTimeout) {
           session.iceRestartTimeout = setTimeout(() => {
             session.iceRestartTimeout = undefined;
-            if (pc.connectionState === 'failed') {
-              try {
-                pc.restartIce();
-                this.createOffer(remoteSocketId, session.remoteParticipantId);
-              } catch (e) {
-                console.error('[STATIC WebRTC] Failed to restart ICE:', e);
-              }
+            if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+              this.initiateIceRestart(session);
             }
-          }, 1000);
+          }, 2500);
         }
+      } else if (state === 'failed') {
+        this.logVoice('Connection failed. Initiating automatic ICE restart...', { remoteSocketId });
+        this.initiateIceRestart(session);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      const iceState = pc.iceConnectionState;
+      if (iceState === 'failed') {
+        this.initiateIceRestart(session);
       }
     };
 
@@ -544,11 +624,27 @@ export class WebRTCVoiceEngine {
   }
 
   /**
-   * Initiates an SDP offer to a remote peer (with W3C Perfect Negotiation guarding)
+   * Triggers seamless WebRTC ICE restart for automatic network recovery
    */
-  public async createOffer(targetSocketId: string, targetParticipantId?: string) {
+  private initiateIceRestart(session: PeerSession) {
+    if (session.pc.connectionState === 'closed') return;
+    this.logVoice('ICE reconnecting', { peer: session.remoteSocketId });
+
+    try {
+      if (typeof session.pc.restartIce === 'function') {
+        session.pc.restartIce();
+      }
+      this.createOffer(session.remoteSocketId, session.remoteParticipantId, true);
+    } catch (e) {
+      console.warn('[STATIC Voice] restartIce error:', e);
+    }
+  }
+
+  /**
+   * Initiates an SDP offer with W3C Perfect Negotiation glare guarding
+   */
+  public async createOffer(targetSocketId: string, targetParticipantId?: string, isIceRestart: boolean = false) {
     if (!this.localStream && this.micStartingPromise) {
-      console.log('[STATIC WebRTC] createOffer waiting for pending mic start...');
       await this.micStartingPromise;
     }
 
@@ -561,11 +657,11 @@ export class WebRTCVoiceEngine {
 
       const offer = await pc.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: false
+        offerToReceiveVideo: false,
+        iceRestart: isIceRestart
       });
 
       if (pc.signalingState !== 'stable') {
-        console.warn('[STATIC WebRTC] Cannot setLocalDescription: signalingState is', pc.signalingState);
         return;
       }
 
@@ -577,9 +673,9 @@ export class WebRTCVoiceEngine {
         signal: pc.localDescription,
         type: 'offer'
       });
-      console.log('[STATIC WebRTC] Sent offer to peer:', targetSocketId);
+      this.logVoice('Sent offer to peer', { targetSocketId, isIceRestart });
     } catch (err) {
-      console.error('[STATIC WebRTC] Error creating offer for peer:', targetSocketId, err);
+      console.error('[STATIC Voice] Error creating offer for peer:', targetSocketId, err);
     } finally {
       peer.makingOffer = false;
     }
@@ -587,7 +683,7 @@ export class WebRTCVoiceEngine {
 
   /**
    * Handles incoming signaling messages (offers, answers, ICE candidates)
-   * with W3C Perfect Negotiation glare resolution and candidate flushing.
+   * with W3C Perfect Negotiation rollback and candidate queue flushing.
    */
   private async handleSignalReceived(data: SignalData) {
     const { senderSocketId, senderParticipantId, signal, type } = data;
@@ -600,19 +696,19 @@ export class WebRTCVoiceEngine {
         peer.ignoreOffer = !peer.isPolite && offerCollision;
 
         if (peer.ignoreOffer) {
-          console.warn('[STATIC WebRTC] Impolite peer ignoring colliding offer from:', senderSocketId);
+          this.logVoice('Impolite peer ignoring colliding offer', { senderSocketId });
           return;
         }
 
         if (offerCollision && peer.isPolite) {
-          console.log('[STATIC WebRTC] Polite peer rolling back colliding offer for:', senderSocketId);
+          this.logVoice('Polite peer rolling back colliding offer', { senderSocketId });
           await pc.setLocalDescription({ type: 'rollback' });
         }
 
         // 1. Set Remote Description
         await pc.setRemoteDescription(new RTCSessionDescription(signal));
 
-        // 2. Attach or pair local track if mic is live or starting
+        // 2. Attach or pair local track
         if (!this.localStream && this.micStartingPromise) {
           await this.micStartingPromise;
         }
@@ -623,7 +719,7 @@ export class WebRTCVoiceEngine {
           const candidate = peer.pendingCandidates.shift();
           if (candidate) {
             await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) => {
-              console.warn('[STATIC WebRTC] addIceCandidate error:', e);
+              console.warn('[STATIC Voice] addIceCandidate error:', e);
             });
           }
         }
@@ -639,7 +735,7 @@ export class WebRTCVoiceEngine {
           signal: pc.localDescription,
           type: 'answer'
         });
-        console.log('[STATIC WebRTC] Sent answer to peer:', senderSocketId);
+        this.logVoice('Sent answer to peer', { senderSocketId });
       } else if (type === 'answer') {
         if (pc.signalingState === 'have-local-offer') {
           peer.isSettingRemoteAnswerPending = true;
@@ -650,13 +746,13 @@ export class WebRTCVoiceEngine {
             const candidate = peer.pendingCandidates.shift();
             if (candidate) {
               await pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((e) => {
-                console.warn('[STATIC WebRTC] addIceCandidate error after answer:', e);
+                console.warn('[STATIC Voice] addIceCandidate error after answer:', e);
               });
             }
           }
-          console.log('[STATIC WebRTC] Remote answer accepted for peer:', senderSocketId);
+          this.logVoice('Remote answer accepted', { senderSocketId });
         } else {
-          console.warn('[STATIC WebRTC] Received answer in unexpected state:', pc.signalingState);
+          console.warn('[STATIC Voice] Received answer in unexpected state:', pc.signalingState);
         }
       } else if (type === 'ice-candidate') {
         try {
@@ -667,12 +763,12 @@ export class WebRTCVoiceEngine {
           }
         } catch (err) {
           if (!peer.ignoreOffer) {
-            console.warn('[STATIC WebRTC] Error adding candidate:', err);
+            console.warn('[STATIC Voice] Error adding candidate:', err);
           }
         }
       }
     } catch (err) {
-      console.error('[STATIC WebRTC] Signaling error for peer:', senderSocketId, err);
+      console.error('[STATIC Voice] Signaling error for peer:', senderSocketId, err);
     }
   }
 
@@ -686,7 +782,10 @@ export class WebRTCVoiceEngine {
     }
     if (!peer) return;
 
-    console.log('[STATIC WebRTC] Removing peer session:', peer.remoteSocketId, peer.remoteParticipantId);
+    this.logVoice('peer disconnected', {
+      remoteSocketId: peer.remoteSocketId,
+      remoteParticipantId: peer.remoteParticipantId
+    });
 
     if (peer.iceRestartTimeout) {
       clearTimeout(peer.iceRestartTimeout);
@@ -694,11 +793,10 @@ export class WebRTCVoiceEngine {
     }
 
     peer.pc.close();
-    peer.audioElement.pause();
-    peer.audioElement.srcObject = null;
-    if (peer.audioElement.parentNode) {
-      peer.audioElement.parentNode.removeChild(peer.audioElement);
-    }
+
+    const participantId = peer.remoteParticipantId || peer.remoteSocketId;
+    this.remoteAudioManager.removeParticipant(participantId);
+    this.diagnostics.removePeer(participantId);
 
     this.peersBySocketId.delete(peer.remoteSocketId);
     if (peer.remoteParticipantId) {
@@ -707,19 +805,11 @@ export class WebRTCVoiceEngine {
   }
 
   /**
-   * Handles audio autoplay rejection by the browser (common on mobile WebKit / iOS Safari).
-   */
-  private handleAutoplayFailure() {
-    this.isAutoplayBlocked = true;
-    this.callbacks.onAutoplayBlocked?.(true);
-  }
-
-  /**
    * Registers persistent event listeners across user interaction types
-   * so that any tap, touch, or click anywhere on the page immediately unlocks audio.
+   * so that any tap, touch, or click immediately unlocks audio playback.
    */
   private registerGlobalUnlockListeners() {
-    if (this.globalUnlockListenerBound) return;
+    if (this.globalUnlockListenerBound || typeof window === 'undefined') return;
     this.globalUnlockListenerBound = true;
 
     const unlock = () => {
@@ -733,34 +823,72 @@ export class WebRTCVoiceEngine {
   }
 
   /**
-   * Unlocks WebRTC audio playback and AudioContext using a user gesture.
+   * Registers audio device change and network recovery event listeners
    */
-  public async unlockAudio(): Promise<boolean> {
-    let allPlaying = true;
-    try {
-      if (this.audioContext && this.audioContext.state === 'suspended') {
-        await this.audioContext.resume().catch(() => {});
-      }
+  private registerDeviceAndNetworkListeners() {
+    if (typeof window === 'undefined') return;
 
-      for (const peer of this.peersBySocketId.values()) {
-        if (peer.audioElement.paused && peer.audioElement.srcObject) {
-          try {
-            await peer.audioElement.play();
-            console.log('[STATIC WebRTC] Audio successfully unlocked for peer:', peer.remoteSocketId);
-          } catch (err: any) {
-            allPlaying = false;
+    // 1. Audio Device Change (Bluetooth connects/disconnects, headphones plugged/unplugged)
+    if (!this.deviceChangeListenerBound && navigator.mediaDevices) {
+      this.deviceChangeListenerBound = true;
+      navigator.mediaDevices.addEventListener('devicechange', async () => {
+        this.logVoice('audio device changed');
+        if (this.localStream) {
+          const track = this.localStream.getAudioTracks()[0];
+          // If track died or became unlive, seamlessly hot-swap track
+          if (!track || track.readyState !== 'live') {
+            await this.recoverMicrophoneStream();
           }
         }
-      }
-
-      if (allPlaying && this.isAutoplayBlocked) {
-        this.isAutoplayBlocked = false;
-        this.callbacks.onAutoplayBlocked?.(false);
-      }
-    } catch (err) {
-      console.warn('[STATIC WebRTC] unlockAudio exception:', err);
+      });
     }
-    return allPlaying;
+
+    // 2. Network Online Event (Wi-Fi to Mobile data switch recovery)
+    if (!this.onlineListenerBound) {
+      this.onlineListenerBound = true;
+      window.addEventListener('online', () => {
+        this.logVoice('Network online event detected. Checking peer connectivity...');
+        for (const peer of this.peersBySocketId.values()) {
+          if (peer.pc.connectionState === 'disconnected' || peer.pc.connectionState === 'failed') {
+            this.initiateIceRestart(peer);
+          }
+        }
+      });
+    }
+  }
+
+  /**
+   * Starts periodic WebRTC getStats() diagnostics polling
+   */
+  private startDiagnosticsPolling() {
+    this.diagnostics.start(() => {
+      const list: Array<{ id: string; socketId: string; pc: RTCPeerConnection }> = [];
+      for (const peer of this.peersBySocketId.values()) {
+        list.push({
+          id: peer.remoteParticipantId || peer.remoteSocketId,
+          socketId: peer.remoteSocketId,
+          pc: peer.pc
+        });
+      }
+      return list;
+    }, 2500);
+  }
+
+  /**
+   * Unlocks WebRTC audio playback under user gesture
+   */
+  public async unlockAudio(): Promise<boolean> {
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      await this.audioContext.resume().catch(() => {});
+    }
+    return this.remoteAudioManager.unlockAll();
+  }
+
+  /**
+   * Returns current diagnostics snapshot for developer diagnostics HUD
+   */
+  public getDiagnosticsSnapshot(): Map<string, PeerConnectionStats> {
+    return this.diagnostics.getAllStats();
   }
 
   /**
@@ -792,7 +920,10 @@ export class WebRTCVoiceEngine {
    * Fully tears down engine, audio streams, and connections
    */
   public teardown() {
-    console.log('[STATIC WebRTC] engine teardown — cleaning all peers and audio elements');
+    this.logVoice('engine teardown — cleaning all peers and audio elements');
+
+    this.diagnostics.stop();
+
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
@@ -817,24 +948,15 @@ export class WebRTCVoiceEngine {
         clearTimeout(peer.iceRestartTimeout);
       }
       peer.pc.close();
-      peer.audioElement.pause();
-      peer.audioElement.srcObject = null;
-      if (peer.audioElement.parentNode) {
-        peer.audioElement.parentNode.removeChild(peer.audioElement);
-      }
     }
 
     this.peersBySocketId.clear();
     this.peersByParticipantId.clear();
 
-    const container = document.getElementById('static-remote-audio-container');
-    if (container && container.parentNode) {
-      container.parentNode.removeChild(container);
-    }
+    this.remoteAudioManager.cleanup();
 
     this.isSpeaking = false;
     this.isMuted = false;
-    this.isAutoplayBlocked = false;
     this.micStartingPromise = null;
   }
 }

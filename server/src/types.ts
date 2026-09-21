@@ -145,6 +145,10 @@ export interface ClientToServerEvents {
     payload: { orderedParticipantIds: string[] },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;
+
+  'get-ice-config': (
+    callback: (response: { iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }> }) => void
+  ) => void;
 }
 
 // Server to Client events

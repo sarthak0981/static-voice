@@ -55,6 +55,49 @@ app.get('/api/room/:roomId', (req, res) => {
   });
 });
 
+function getIceServersConfig(): Array<{ urls: string | string[]; username?: string; credential?: string }> {
+  const defaultStun = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' }
+  ];
+
+  const turnUrls = process.env.TURN_URLS ? process.env.TURN_URLS.split(',').map((u) => u.trim()).filter(Boolean) : null;
+  const turnUsername = process.env.TURN_USERNAME;
+  const turnCredential = process.env.TURN_CREDENTIAL || process.env.TURN_PASSWORD;
+
+  if (turnUrls && turnUrls.length > 0 && turnUsername && turnCredential) {
+    return [
+      ...defaultStun,
+      {
+        urls: turnUrls,
+        username: turnUsername,
+        credential: turnCredential
+      }
+    ];
+  }
+
+  // Fallback public relay for development/carrier NAT testing if no custom TURN env is set
+  return [
+    ...defaultStun,
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+        'turns:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ];
+}
+
+app.get('/api/ice-config', (_req, res) => {
+  res.json({ iceServers: getIceServersConfig() });
+});
+
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
 app.use(express.static(clientDistPath));
 
@@ -68,6 +111,12 @@ app.get('*', (_req, res) => {
 
 io.on('connection', (socket) => {
   let currentRoomId: string | null = null;
+
+  socket.on('get-ice-config', (callback) => {
+    if (typeof callback === 'function') {
+      callback({ iceServers: getIceServersConfig() });
+    }
+  });
 
   // 1. Create Room (with custom roomName and sanitized displayName)
   socket.on('create-room', ({ roomName, displayName, sessionToken }, callback) => {
