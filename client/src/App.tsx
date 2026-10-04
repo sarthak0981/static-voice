@@ -1028,19 +1028,18 @@ export function App() {
     const recorder = sessionRecorderRef.current;
     if (!recorder) return;
 
-    const localStream = webrtcEngineRef.current?.getLocalStream() || null;
-    const remoteStreams = webrtcEngineRef.current?.getRemoteAudioManager()?.getActiveRemoteStreams() || [];
-
     const started = await recorder.startRecording(
       roomStateRef.current.room.roomName || 'STATIC-Party',
-      localStream,
-      remoteStreams
+      {
+        getLocalStream: () => webrtcEngineRef.current?.getLocalStream() || null,
+        getRemoteStreams: () => webrtcEngineRef.current?.getRemoteAudioManager()?.getActiveRemoteStreams() || []
+      }
     );
 
     if (started) {
       notificationSound.playRecordingStart();
       queueNotification({
-        message: 'Recording started (Max 5 minutes)',
+        message: 'Recording started (1080p 30fps FHD)',
         icon: 'record',
         type: 'record',
         durationMs: 3500
