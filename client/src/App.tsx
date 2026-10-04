@@ -1323,6 +1323,7 @@ export function App() {
           peerVolumes={peerVolumes}
           peerQualities={peerQualities}
           disconnectedPeerIds={disconnectedPeerIds}
+          isChatOpen={isChatOpen}
         />
 
         {isHost && (

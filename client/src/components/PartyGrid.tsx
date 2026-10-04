@@ -35,6 +35,7 @@ interface PartyGridProps {
   peerVolumes?: Record<string, number>;
   peerQualities?: Record<string, ConnectionQuality>;
   disconnectedPeerIds?: Set<string>;
+  isChatOpen?: boolean;
 }
 
 export const PartyGrid: React.FC<PartyGridProps> = ({
@@ -56,7 +57,8 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
   loungeCount = 0,
   peerVolumes = {},
   peerQualities = {},
-  disconnectedPeerIds = new Set()
+  disconnectedPeerIds = new Set(),
+  isChatOpen = false
 }) => {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -124,7 +126,7 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
 
   return (
     <div className="flex-1 flex flex-col h-full bg-[#07080B] p-3 sm:p-5 overflow-y-auto select-none transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
-      <div className="w-full max-w-6xl mx-auto flex-1 flex flex-col justify-start pb-28 sm:pb-32">
+      <div className={`w-full max-w-6xl mx-auto flex-1 flex flex-col justify-start transition-all duration-300 ${isChatOpen ? 'pb-[calc(38dvh+84px)] sm:pb-32' : 'pb-28 sm:pb-32'}`}>
         {/* Grid Top Bar */}
         <div className="flex items-center justify-between mb-3 sm:mb-4 px-1 shrink-0">
           <div className="flex items-center gap-2">
@@ -210,7 +212,9 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDrop={(e) => handleDrop(e, index)}
                   onDragEnd={handleDragEnd}
-                  className={`relative flex flex-col justify-between p-2.5 sm:p-4 min-h-[155px] sm:min-h-[180px] max-h-[220px] rounded-2xl sm:rounded-3xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
+                  className={`relative flex flex-col justify-between p-2 sm:p-4 ${
+                    isChatOpen ? 'min-h-[120px] sm:min-h-[180px]' : 'min-h-[155px] sm:min-h-[180px]'
+                  } max-h-[220px] rounded-2xl sm:rounded-3xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
                     isBeingDragged ? 'opacity-40 scale-95 ring-2 ring-[#00E599]' : ''
                   } ${isDropTarget ? 'scale-105 ring-2 ring-[#00E599]/80 bg-[#00E599]/5' : ''} ${
                     isHandRaised ? 'ring-2 ring-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.3)]' : ''
