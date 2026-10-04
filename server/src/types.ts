@@ -32,6 +32,7 @@ export interface RoomSummary {
   loungeCapacity: number; // 50
   queueCount: number;
   hostDisconnectGraceSeconds?: number;
+  isRecording?: boolean;
 }
 
 export interface ChatMessage {
@@ -165,6 +166,16 @@ export interface ClientToServerEvents {
   'get-ice-config': (
     callback: (response: { iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }> }) => void
   ) => void;
+
+  'start-recording': (
+    payload: { roomId?: string },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
+
+  'stop-recording': (
+    payload: { roomId?: string },
+    callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
 }
 
 // Server to Client events
@@ -190,4 +201,5 @@ export interface ServerToClientEvents {
   'signal-received': (payload: SignalData) => void;
   'peer-ready-for-offer': (payload: { socketId: string; participantId: string }) => void;
   'party-chat-message': (message: ChatMessage) => void;
+  'recording-status-changed': (payload: { isRecording: boolean; hostName?: string }) => void;
 }

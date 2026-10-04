@@ -1024,4 +1024,12 @@ export class WebRTCVoiceEngine {
     this.isMuted = false;
     this.micStartingPromise = null;
   }
+
+  public getLocalStream(): MediaStream | null {
+    return this.localStream;
+  }
+
+  public getRemoteAudioManager(): RemoteAudioManager {
+    return this.remoteAudioManager;
+  }
 }

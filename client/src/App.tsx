@@ -38,6 +38,7 @@ import {
   MicPromptBanner
 } from './components/StateScreens.js';
 import { notificationSound } from './lib/audioNotification.js';
+import { SessionRecorder } from './lib/sessionRecorder.js';
 
 export function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('CONNECTING');
@@ -68,6 +69,12 @@ export function App() {
   const [hostGraceSeconds, setHostGraceSeconds] = useState<number | undefined>(undefined);
   const graceIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [disconnectedPeerIds, setDisconnectedPeerIds] = useState<Set<string>>(new Set());
+
+  // In-App Session Recording (Host & Participants)
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const [isGuestRecording, setIsGuestRecording] = useState<boolean>(false);
+  const sessionRecorderRef = useRef<SessionRecorder | null>(null);
 
   // Recent Room accidental disconnect recovery
   const RECENT_ROOM_STORAGE_KEY = 'static_last_active_room';
@@ -315,6 +322,44 @@ export function App() {
     };
   }, [showToast, queueNotification]);
 
+  // Session Recorder initialization
+  useEffect(() => {
+    const recorder = new SessionRecorder({
+      onStart: () => {
+        setIsRecording(true);
+        setRecordingDuration(0);
+        const socket = getSocket();
+        socket.emit('start-recording', { roomId: roomStateRef.current?.room.roomId });
+      },
+      onTick: (elapsed) => {
+        setRecordingDuration(elapsed);
+      },
+      onStop: (_fileName) => {
+        setIsRecording(false);
+        setRecordingDuration(0);
+        const socket = getSocket();
+        socket.emit('stop-recording', { roomId: roomStateRef.current?.room.roomId });
+      },
+      onLimitReached: () => {
+        showToast('Maximum recording limit reached (5:00). Recording saved.', 'record');
+      },
+      onError: (err) => {
+        console.error('[SessionRecorder error]', err);
+        showToast('Session recording failed to start.', 'alert');
+        setIsRecording(false);
+      }
+    });
+
+    sessionRecorderRef.current = recorder;
+
+    return () => {
+      if (recorder.isRecordingActive()) {
+        recorder.stopAndSave().catch(() => {});
+      }
+      sessionRecorderRef.current = null;
+    };
+  }, [showToast]);
+
   // Setup Socket.io event listeners
   useEffect(() => {
     const socket = getSocket();
@@ -385,6 +430,12 @@ export function App() {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
       setRecentRoom(null);
+      if (sessionRecorderRef.current?.isRecordingActive()) {
+        sessionRecorderRef.current.stopAndSave().catch(() => {});
+      }
+      setIsRecording(false);
+      setIsGuestRecording(false);
+      setRecordingDuration(0);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -424,6 +475,12 @@ export function App() {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
       setRecentRoom(null);
+      if (sessionRecorderRef.current?.isRecordingActive()) {
+        sessionRecorderRef.current.stopAndSave().catch(() => {});
+      }
+      setIsRecording(false);
+      setIsGuestRecording(false);
+      setRecordingDuration(0);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -453,6 +510,12 @@ export function App() {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
       setRecentRoom(null);
+      if (sessionRecorderRef.current?.isRecordingActive()) {
+        sessionRecorderRef.current.stopAndSave().catch(() => {});
+      }
+      setIsRecording(false);
+      setIsGuestRecording(false);
+      setRecordingDuration(0);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -497,6 +560,12 @@ export function App() {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
       setRecentRoom(null);
+      if (sessionRecorderRef.current?.isRecordingActive()) {
+        sessionRecorderRef.current.stopAndSave().catch(() => {});
+      }
+      setIsRecording(false);
+      setIsGuestRecording(false);
+      setRecordingDuration(0);
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
       }
@@ -693,6 +762,33 @@ export function App() {
       });
     };
 
+    const handleRecordingStatusChanged = (payload: { isRecording: boolean; hostName?: string }) => {
+      setIsGuestRecording(payload.isRecording);
+      const isHostUser = roomStateRef.current?.currentUser.role === 'HOST';
+
+      if (payload.isRecording) {
+        if (!isHostUser) {
+          notificationSound.playRecordingStart();
+          queueNotification({
+            message: `${payload.hostName || 'Host'} started recording the session`,
+            icon: 'record',
+            type: 'record',
+            durationMs: 4000
+          });
+        }
+      } else {
+        if (!isHostUser) {
+          notificationSound.playRecordingStop();
+          queueNotification({
+            message: 'Recording ended',
+            icon: 'record',
+            type: 'info',
+            durationMs: 3000
+          });
+        }
+      }
+    };
+
     const handleConnect = () => {
       const activeState = roomStateRef.current;
       if (activeState?.room?.roomId) {
@@ -729,6 +825,7 @@ export function App() {
     socket.on('participant-left-party', handleParticipantLeftParty);
     socket.on('participant-disconnected', handleParticipantDisconnected);
     socket.on('participant-kicked', handleParticipantKicked);
+    socket.on('recording-status-changed', handleRecordingStatusChanged);
 
     return () => {
       socket.off('connect', handleConnect);
@@ -750,6 +847,7 @@ export function App() {
       socket.off('participant-left-party', handleParticipantLeftParty);
       socket.off('participant-disconnected', handleParticipantDisconnected);
       socket.off('participant-kicked', handleParticipantKicked);
+      socket.off('recording-status-changed', handleRecordingStatusChanged);
       if (graceIntervalRef.current) clearInterval(graceIntervalRef.current);
     };
   }, [showToast, queueNotification]);
@@ -904,7 +1002,12 @@ export function App() {
 
 
   // Host Action: Transfer Host
-  const handleTransferHost = (targetParticipantId: string) => {
+  const handleTransferHost = async (targetParticipantId: string) => {
+    if (sessionRecorderRef.current?.isRecordingActive()) {
+      showToast('Saving recording before host transfer...', 'record');
+      notificationSound.playRecordingStop();
+      await sessionRecorderRef.current.stopAndSave();
+    }
     const socket = getSocket();
     const roomId = roomStateRef.current?.room.roomId;
     socket.emit('transfer-host', { roomId, targetParticipantId }, (res: any) => {
@@ -913,6 +1016,52 @@ export function App() {
       }
     });
   };
+
+  // Host Action: Start In-App Session Recording (FHD 1080p + Mixed Stereo Voice)
+  const handleStartRecording = useCallback(async () => {
+    if (!roomStateRef.current) return;
+    if (roomStateRef.current.currentUser.role !== 'HOST') {
+      showToast('Only the host can record the session.');
+      return;
+    }
+
+    const recorder = sessionRecorderRef.current;
+    if (!recorder) return;
+
+    const localStream = webrtcEngineRef.current?.getLocalStream() || null;
+    const remoteStreams = webrtcEngineRef.current?.getRemoteAudioManager()?.getActiveRemoteStreams() || [];
+
+    const started = await recorder.startRecording(
+      roomStateRef.current.room.roomName || 'STATIC-Party',
+      localStream,
+      remoteStreams
+    );
+
+    if (started) {
+      notificationSound.playRecordingStart();
+      queueNotification({
+        message: 'Recording started (Max 5 minutes)',
+        icon: 'record',
+        type: 'record',
+        durationMs: 3500
+      });
+    }
+  }, [showToast, queueNotification]);
+
+  // Host Action: Stop In-App Session Recording and Save
+  const handleStopRecording = useCallback(async () => {
+    const recorder = sessionRecorderRef.current;
+    if (!recorder || !recorder.isRecordingActive()) return;
+
+    notificationSound.playRecordingStop();
+    await recorder.stopAndSave();
+    queueNotification({
+      message: 'Recording saved to downloads',
+      icon: 'record',
+      type: 'success',
+      durationMs: 3500
+    });
+  }, [queueNotification]);
 
   // Host Action: Kick User
   const handleKickParticipant = (targetParticipantId: string) => {
@@ -994,7 +1143,12 @@ export function App() {
   };
 
   // Host Action: End Room
-  const handleEndRoom = () => {
+  const handleEndRoom = async () => {
+    if (sessionRecorderRef.current?.isRecordingActive()) {
+      showToast('Saving recording...', 'record');
+      notificationSound.playRecordingStop();
+      await sessionRecorderRef.current.stopAndSave();
+    }
     setIsLoading(true);
     const socket = getSocket();
     const activeRoomId = roomStateRef.current?.room.roomId;
@@ -1020,6 +1174,9 @@ export function App() {
           localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
         } catch {}
         setRecentRoom(null);
+        setIsRecording(false);
+        setIsGuestRecording(false);
+        setRecordingDuration(0);
 
         if (webrtcEngineRef.current) {
           webrtcEngineRef.current.teardown();
@@ -1070,7 +1227,12 @@ export function App() {
     handleExecuteLeave();
   };
 
-  const handleExecuteLeave = (options?: { transferToParticipantId?: string; autoTransfer?: boolean }) => {
+  const handleExecuteLeave = async (options?: { transferToParticipantId?: string; autoTransfer?: boolean }) => {
+    if (sessionRecorderRef.current?.isRecordingActive()) {
+      showToast('Saving recording before leaving...', 'record');
+      notificationSound.playRecordingStop();
+      await sessionRecorderRef.current.stopAndSave();
+    }
     const socket = getSocket();
     const activeRoomId = roomStateRef.current?.room.roomId;
     socket.emit('leave-room', { roomId: activeRoomId, ...options }, () => {
@@ -1081,6 +1243,9 @@ export function App() {
         localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
       } catch {}
       setRecentRoom(null);
+      setIsRecording(false);
+      setIsGuestRecording(false);
+      setRecordingDuration(0);
 
       if (webrtcEngineRef.current) {
         webrtcEngineRef.current.teardown();
@@ -1164,6 +1329,13 @@ export function App() {
       localStorage.removeItem(RECENT_ROOM_STORAGE_KEY);
     } catch {}
     setRecentRoom(null);
+
+    if (sessionRecorderRef.current?.isRecordingActive()) {
+      sessionRecorderRef.current.stopAndSave().catch(() => {});
+    }
+    setIsRecording(false);
+    setIsGuestRecording(false);
+    setRecordingDuration(0);
 
     if (webrtcEngineRef.current) {
       webrtcEngineRef.current.teardown();
@@ -1283,13 +1455,17 @@ export function App() {
         onDismissCurrent={handleDismissNotification}
       />
 
-      {/* Top Bar Notification Strip (Code removed, reserved for alerts/status) */}
+      {/* Top Bar Notification Strip with Host Recording Controls */}
       <TopBar
         roomId={roomState.room.roomId}
         roomName={roomState.room.roomName}
         isHost={isHost}
         connectionStatus={connectionStatus}
         onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        isRecording={isHost ? isRecording : (roomState.room.isRecording || isGuestRecording)}
+        recordingDuration={recordingDuration}
+        onStartRecording={handleStartRecording}
+        onStopRecording={handleStopRecording}
       />
 
       {/* Microphone Permission Banner if in party and mic is off/denied */}

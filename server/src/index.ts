@@ -630,6 +630,47 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 16. In-App Session Recording (Host Only)
+  socket.on('start-recording', ({ roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room, participant } = resolved;
+
+    if (participant.role !== 'HOST') {
+      return cb({ success: false, error: 'Only the host can record the session.' });
+    }
+
+    roomManager.setRecordingState(room, true);
+    broadcastRoomState(room.roomId);
+    io.to(room.roomId).emit('recording-status-changed', {
+      isRecording: true,
+      hostName: participant.displayName
+    });
+
+    cb({ success: true });
+  });
+
+  socket.on('stop-recording', ({ roomId: explicitRoomId }: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
+    const { room, participant } = resolved;
+
+    if (participant.role !== 'HOST') {
+      return cb({ success: false, error: 'Only the host can control recording.' });
+    }
+
+    roomManager.setRecordingState(room, false);
+    broadcastRoomState(room.roomId);
+    io.to(room.roomId).emit('recording-status-changed', {
+      isRecording: false,
+      hostName: participant.displayName
+    });
+
+    cb({ success: true });
+  });
+
   // 16. WebRTC Peer Signaling
   socket.on('signal-peer', (payload: any) => {
     const resolved = resolveRoomAndParticipant(payload?.roomId);

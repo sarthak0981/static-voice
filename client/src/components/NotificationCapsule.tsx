@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Sparkles, LogOut, Info, AlertTriangle, Check, Crown, Lock, Unlock, Hand } from 'lucide-react';
+import { Volume2, Sparkles, LogOut, Info, AlertTriangle, Check, Crown, Lock, Unlock, Hand, Circle } from 'lucide-react';
 
 export interface NotificationItem {
   id: string;
   message: string;
-  type?: 'info' | 'leave' | 'join' | 'alert' | 'success' | 'action' | 'host' | 'invitations-open' | 'invitations-closed';
-  icon?: 'leave' | 'join' | 'volume' | 'alert' | 'success' | 'info' | 'host' | 'unlock' | 'lock' | 'hand';
+  type?: 'info' | 'leave' | 'join' | 'alert' | 'success' | 'action' | 'host' | 'invitations-open' | 'invitations-closed' | 'record';
+  icon?: 'leave' | 'join' | 'volume' | 'alert' | 'success' | 'info' | 'host' | 'unlock' | 'lock' | 'hand' | 'record';
   actionText?: string;
   onAction?: () => void;
   durationMs?: number;
@@ -87,6 +87,8 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
         return <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />;
       case 'success':
         return <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+      case 'record':
+        return <Circle className="w-3.5 h-3.5 text-rose-500 fill-rose-500 animate-pulse shrink-0" />;
       case 'hand':
         return <Hand className="w-3.5 h-3.5 text-amber-300 fill-amber-400/20 shrink-0" />;
       default:
@@ -97,8 +99,12 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
   const isHostNotification = currentItem.type === 'host';
   const isInvitationsOpen = currentItem.type === 'invitations-open';
   const isInvitationsClosed = currentItem.type === 'invitations-closed';
+  const isRecordNotification = currentItem.type === 'record';
 
   const getCapsuleClasses = () => {
+    if (isRecordNotification) {
+      return 'bg-[#0D0F16]/95 border border-rose-500/80 shadow-[0_0_24px_rgba(244,63,94,0.35)] hover:border-rose-400';
+    }
     if (isHostNotification) {
       return 'bg-[#0D0F16]/95 border border-amber-400/70 shadow-[0_0_22px_rgba(251,191,36,0.22)] hover:border-amber-400 hover:shadow-[0_0_28px_rgba(251,191,36,0.3)]';
     }
@@ -124,6 +130,7 @@ export const NotificationCapsule: React.FC<NotificationCapsuleProps> = ({
   };
 
   const getMessageClasses = () => {
+    if (isRecordNotification) return 'text-rose-200 font-semibold';
     if (isHostNotification) return 'text-amber-200 font-semibold';
     if (isInvitationsOpen) return 'text-emerald-200 font-semibold';
     if (isInvitationsClosed) return 'text-purple-200 font-semibold';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Radio, Settings } from 'lucide-react';
+import { Radio, Settings, Circle, Square } from 'lucide-react';
 import { ConnectionStatus } from '../types/index.js';
 
 interface TopBarProps {
@@ -8,14 +8,27 @@ interface TopBarProps {
   isHost: boolean;
   connectionStatus: ConnectionStatus;
   onOpenSettingsModal: () => void;
+  isRecording?: boolean;
+  recordingDuration?: number;
+  onStartRecording?: () => void;
+  onStopRecording?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
   roomName,
   isHost,
   connectionStatus,
-  onOpenSettingsModal
+  onOpenSettingsModal,
+  isRecording = false,
+  recordingDuration = 0,
+  onStartRecording,
+  onStopRecording
 }) => {
+  const formatTime = (secs: number = 0) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   const renderStatusBadge = () => {
     switch (connectionStatus) {
@@ -73,8 +86,51 @@ export const TopBar: React.FC<TopBarProps> = ({
 
 
 
-      {/* Right: Clean minimal room settings */}
+      {/* Right: Recording controls & room settings */}
       <div className="flex items-center gap-2 shrink-0 py-2">
+        {/* Guest Recording Indicator Badge */}
+        {!isHost && isRecording && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs font-mono select-none">
+            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+            <span className="font-bold tracking-wider text-rose-400">REC</span>
+            <span className="hidden sm:inline text-rose-300/80 text-[11px]">RECORDING</span>
+          </div>
+        )}
+
+        {/* Host Recording Controls */}
+        {isHost && (
+          <>
+            {isRecording ? (
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-rose-950/50 border border-rose-500/60 shadow-[0_0_15px_rgba(244,63,94,0.3)] text-rose-300 text-xs font-mono select-none">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
+                <span className="font-bold tracking-wider text-rose-400">REC</span>
+                <span className="text-white font-medium">{formatTime(recordingDuration)}</span>
+                <span className="text-white/40 text-[10px]">/ 05:00</span>
+                <button
+                  type="button"
+                  onClick={onStopRecording}
+                  title="Stop and Save Recording"
+                  aria-label="Stop Recording"
+                  className="ml-0.5 p-1 rounded-md bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 hover:text-white transition-colors cursor-pointer"
+                >
+                  <Square className="w-3 h-3 fill-current" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onStartRecording}
+                title="Record Session (Host only, up to 5 min)"
+                aria-label="Start Recording"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 hover:border-rose-500/50 text-rose-400 hover:text-rose-300 text-xs font-mono transition-all duration-150 cursor-pointer active:scale-95 shadow-sm"
+              >
+                <Circle className="w-3 h-3 fill-rose-500 text-rose-500" />
+                <span className="hidden sm:inline font-semibold">RECORD</span>
+              </button>
+            )}
+          </>
+        )}
+
         {isHost && (
           <button
             type="button"

@@ -37,6 +37,7 @@ export interface InternalRoom {
   hostGraceTimer?: NodeJS.Timeout;
   disconnectedHostId?: string;
   hostDisconnectGraceSeconds?: number;
+  isRecording?: boolean;
 }
 
 export class RoomManager {
@@ -131,6 +132,7 @@ export class RoomManager {
       tokenToParticipant: new Map([[sessionToken, participantId]]),
       queue: [],
       chatHistory: [],
+      isRecording: false,
       partyOrder: [participantId]
     };
 
@@ -399,6 +401,7 @@ export class RoomManager {
     currentHost.role = 'GUEST';
     target.role = 'HOST';
     room.hostId = target.participantId;
+    room.isRecording = false;
     this.touchRoom(room);
 
     return { success: true, oldHost: currentHost, newHost: target };
@@ -884,8 +887,14 @@ export class RoomManager {
       loungeCount: lounge.length,
       loungeCapacity: LOUNGE_CAPACITY,
       queueCount: room.queue.length,
-      hostDisconnectGraceSeconds: room.hostDisconnectGraceSeconds
+      hostDisconnectGraceSeconds: room.hostDisconnectGraceSeconds,
+      isRecording: !!room.isRecording
     };
+  }
+
+  public setRecordingState(room: InternalRoom, isRecording: boolean): void {
+    room.isRecording = isRecording;
+    this.touchRoom(room);
   }
 
   public getClientRoomState(room: InternalRoom, currentUser: Participant): ClientRoomState {

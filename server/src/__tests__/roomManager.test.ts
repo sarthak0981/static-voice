@@ -181,5 +181,25 @@ describe('RoomManager: Clear Lounge, Stop Invitations, Duplicate Names & Validat
     expect(kickPartyRes.success).toBe(true);
     expect(kickPartyRes.wasInLounge).toBe(false);
   });
+
+  it('manages session recording state and automatically resets it on host transfer', () => {
+    const { room } = rm.createRoom('socket_host', 'Party', 'Host');
+    const gP1 = rm.joinRoom(room.roomId, 'sock_p1', 'Alice');
+    rm.admitToParty(room, 'socket_host', gP1.participant!.participantId);
+
+    // Initial state: not recording
+    expect(rm.getRoomSummary(room).isRecording).toBe(false);
+
+    // Host starts recording
+    rm.setRecordingState(room, true);
+    expect(room.isRecording).toBe(true);
+    expect(rm.getRoomSummary(room).isRecording).toBe(true);
+
+    // Host transfers host to Alice -> recording should automatically reset to false
+    const transferRes = rm.transferHost(room, 'socket_host', gP1.participant!.participantId);
+    expect(transferRes.success).toBe(true);
+    expect(room.isRecording).toBe(false);
+    expect(rm.getRoomSummary(room).isRecording).toBe(false);
+  });
 });
 

@@ -251,6 +251,19 @@ export class RemoteAudioManager {
   }
 
   /**
+   * Retrieves all active remote MediaStreams for mixing (e.g. session recording)
+   */
+  public getActiveRemoteStreams(): MediaStream[] {
+    const streams: MediaStream[] = [];
+    for (const [, audio] of this.audioElements.entries()) {
+      if (audio.srcObject instanceof MediaStream) {
+        streams.push(audio.srcObject);
+      }
+    }
+    return streams;
+  }
+
+  /**
    * Full teardown of all audio elements and container
    */
   public cleanup() {

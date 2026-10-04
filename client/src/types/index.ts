@@ -34,6 +34,7 @@ export interface RoomSummary {
   loungeCapacity: number; // 50
   queueCount: number;
   hostDisconnectGraceSeconds?: number;
+  isRecording?: boolean;
 }
 
 export interface ChatMessage {
