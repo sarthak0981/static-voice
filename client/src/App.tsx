@@ -38,7 +38,7 @@ import {
   MicPromptBanner
 } from './components/StateScreens.js';
 import { notificationSound } from './lib/audioNotification.js';
-import { SessionRecorder } from './lib/sessionRecorder.js';
+import { SessionRecorder, isDesktopPC } from './lib/sessionRecorder.js';
 
 export function App() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('CONNECTING');
@@ -1025,6 +1025,11 @@ export function App() {
       return;
     }
 
+    if (!isDesktopPC()) {
+      showToast('Session recording is only supported on PC.', 'alert');
+      return;
+    }
+
     const recorder = sessionRecorderRef.current;
     if (!recorder) return;
 
@@ -1039,7 +1044,7 @@ export function App() {
     if (started) {
       notificationSound.playRecordingStart();
       queueNotification({
-        message: 'Recording started (1080p 30fps FHD)',
+        message: 'Recording started (1080p 60fps FHD)',
         icon: 'record',
         type: 'record',
         durationMs: 3500

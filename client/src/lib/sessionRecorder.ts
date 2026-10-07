@@ -23,11 +23,36 @@ export interface AudioStreamProvider {
   getRemoteStreams: () => MediaStream[];
 }
 
+/**
+ * Detects if the current device is a desktop PC browser (non-mobile, non-tablet).
+ * Ensures recording is strictly restricted to desktop PC environments.
+ */
+export function isDesktopPC(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return true;
+
+  const ua = navigator.userAgent || '';
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|Silk/i.test(ua);
+
+  // iPadOS spoofing check
+  const isIPadOS = /Macintosh/i.test(ua) && navigator.maxTouchPoints > 1;
+
+  // Touch pointer with small screen
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isSmallScreen = window.innerWidth < 1024;
+
+  if (isMobileUA || isIPadOS || (isTouchDevice && isSmallScreen)) {
+    return false;
+  }
+
+  // Ensure getDisplayMedia is supported on PC
+  return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function');
+}
+
 export const MAX_RECORDING_SECONDS = 300; // 5-minute cap
 export const RECORDING_WIDTH = 1920;      // Strict 1080p FHD Width
 export const RECORDING_HEIGHT = 1080;     // Strict 1080p FHD Height
-export const RECORDING_FPS = 30;          // Strict 30.00 Constant FPS
-export const RECORDING_VIDEO_BITRATE = 12000000; // 12 Mbps High-Bitrate FHD
+export const RECORDING_FPS = 60;          // Strict 60.00 Constant FPS (60fps standard)
+export const RECORDING_VIDEO_BITRATE = 16000000; // 16 Mbps High-Bitrate FHD 60FPS
 export const RECORDING_AUDIO_BITRATE = 320000;   // 320 kbps Studio Quality Audio
 
 export class SessionRecorder {
@@ -76,6 +101,15 @@ export class SessionRecorder {
       return false;
     }
 
+    // Strict PC Only enforcement
+    if (!isDesktopPC()) {
+      const err = new Error('Session recording is only supported on PC.');
+      if (this.callbacks.onError) {
+        this.callbacks.onError(err);
+      }
+      return false;
+    }
+
     this.roomName = roomName || 'STATIC-Party';
     this.recordedChunks = [];
     this.elapsedSeconds = 0;
@@ -97,13 +131,13 @@ export class SessionRecorder {
     }
 
     try {
-      // 1. Capture current tab UI (allow up to 4K HiDPI capture for pristine scaling down to 1080p)
+      // 1. Capture current tab UI (allow up to 4K HiDPI capture for pristine scaling down to 1080p @ 60fps)
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           displaySurface: 'browser',
           width: { ideal: 1920, max: 3840 },
           height: { ideal: 1080, max: 2160 },
-          frameRate: { ideal: 30, max: 60 }
+          frameRate: { ideal: 60, min: 30, max: 60 }
         },
         audio: false, // High-fidelity studio mixed audio supplied separately
         preferCurrentTab: true,
@@ -265,12 +299,14 @@ export class SessionRecorder {
       let selectedMimeType = 'video/mp4';
       if (typeof MediaRecorder !== 'undefined') {
         const candidateTypes = [
-          'video/mp4; codecs="avc1.640028, mp4a.40.2"', // High Profile H.264
-          'video/mp4; codecs="avc1.4d4028, mp4a.40.2"', // Main Profile H.264
-          'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', // Baseline Profile H.264
+          'video/mp4; codecs="avc1.64002a, mp4a.40.2"', // High Profile Level 4.2 (1080p 60fps)
+          'video/mp4; codecs="avc1.640028, mp4a.40.2"', // High Profile Level 4.0
+          'video/mp4; codecs="avc1.4d402a, mp4a.40.2"', // Main Profile Level 4.2 (1080p 60fps)
+          'video/mp4; codecs="avc1.4d4028, mp4a.40.2"', // Main Profile Level 4.0
+          'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', // Baseline Profile
           'video/mp4; codecs=avc1',
           'video/mp4',
-          'video/webm; codecs=vp9,opus',               // Ultra-HQ VP9
+          'video/webm; codecs=vp9,opus',               // Ultra-HQ VP9 (Supports 60fps natively)
           'video/webm; codecs=h264,opus',
           'video/webm; codecs=vp8,opus',
           'video/webm'
@@ -283,11 +319,11 @@ export class SessionRecorder {
         }
       }
 
-      // Initialize MediaRecorder with 12 Mbps video + 320 kbps audio
+      // Initialize MediaRecorder with 16 Mbps video + 320 kbps audio (1080p 60fps standard)
       const recorder = new MediaRecorder(combinedStream, {
         mimeType: selectedMimeType,
-        bitsPerSecond: RECORDING_VIDEO_BITRATE + RECORDING_AUDIO_BITRATE, // 12.32 Mbps combined
-        videoBitsPerSecond: RECORDING_VIDEO_BITRATE,                      // 12 Mbps FHD
+        bitsPerSecond: RECORDING_VIDEO_BITRATE + RECORDING_AUDIO_BITRATE, // 16.32 Mbps combined
+        videoBitsPerSecond: RECORDING_VIDEO_BITRATE,                      // 16 Mbps FHD 60FPS
         audioBitsPerSecond: RECORDING_AUDIO_BITRATE                       // 320 kbps Studio Audio
       });
 

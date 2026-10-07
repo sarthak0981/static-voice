@@ -1,6 +1,7 @@
 import React from 'react';
 import { Radio, Settings, Circle, Square } from 'lucide-react';
 import { ConnectionStatus } from '../types/index.js';
+import { isDesktopPC } from '../lib/sessionRecorder.js';
 
 interface TopBarProps {
   roomId: string;
@@ -24,6 +25,16 @@ export const TopBar: React.FC<TopBarProps> = ({
   onStartRecording,
   onStopRecording
 }) => {
+  const [isDesktop, setIsDesktop] = React.useState<boolean>(() => isDesktopPC());
+
+  React.useEffect(() => {
+    const handleResize = () => {
+      setIsDesktop(isDesktopPC());
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const formatTime = (secs: number = 0) => {
     const m = Math.floor(secs / 60).toString().padStart(2, '0');
     const s = (secs % 60).toString().padStart(2, '0');
@@ -97,7 +108,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         )}
 
-        {/* Host Recording Controls */}
+        {/* Host Recording Controls - PC Only */}
         {isHost && (
           <>
             {isRecording ? (
@@ -116,18 +127,18 @@ export const TopBar: React.FC<TopBarProps> = ({
                   <Square className="w-3 h-3 fill-current" />
                 </button>
               </div>
-            ) : (
+            ) : isDesktop ? (
               <button
                 type="button"
                 onClick={onStartRecording}
-                title="Record Session (Host only, up to 5 min)"
+                title="Record Session (PC only, 1080p 60fps, up to 5 min)"
                 aria-label="Start Recording"
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 hover:border-rose-500/50 text-rose-400 hover:text-rose-300 text-xs font-mono transition-all duration-150 cursor-pointer active:scale-95 shadow-sm"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 hover:border-rose-500/50 text-rose-400 hover:text-rose-300 text-xs font-mono transition-all duration-150 cursor-pointer active:scale-95 shadow-sm"
               >
                 <Circle className="w-3 h-3 fill-rose-500 text-rose-500" />
-                <span className="hidden sm:inline font-semibold">RECORD</span>
+                <span className="font-semibold">RECORD</span>
               </button>
-            )}
+            ) : null}
           </>
         )}
 
