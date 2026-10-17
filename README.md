@@ -45,7 +45,7 @@ Client runs on `http://localhost:5173` and backend runs on `http://localhost:300
 ```bash
 npm test
 ```
-Runs the full Vitest suite (49 unit and integration tests across voice DSP, security, and backend logic).
+Runs the full Vitest suite (48 unit and integration tests across voice DSP, security, and backend logic).
 
 ---
 
