@@ -65,31 +65,55 @@ const LEET_MAP: Record<string, string> = {
   '\\/\\/': 'w'
 };
 
+// Homoglyphs map (Cyrillic & Greek lookalikes to Latin letters)
+const HOMOGLYPH_MAP: Record<string, string> = {
+  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'е': 'e', 'ё': 'e', 'ж': 'zh',
+  'з': 'z', 'и': 'i', 'і': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+  'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 'c', 'т': 't', 'у': 'u',
+  'ф': 'f', 'х': 'x', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+  'ы': 'y', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+  'α': 'a', 'β': 'b', 'γ': 'g', 'δ': 'd', 'ε': 'e', 'ζ': 'z', 'η': 'h',
+  'θ': 'th', 'ι': 'i', 'κ': 'k', 'λ': 'l', 'μ': 'm', 'ν': 'n', 'ξ': 'x',
+  'ο': 'o', 'π': 'p', 'ρ': 'r', 'σ': 's', 'ς': 's', 'τ': 't', 'υ': 'u',
+  'φ': 'ph', 'χ': 'ch', 'ψ': 'ps', 'ω': 'o'
+};
+
 /**
  * Normalizes raw input:
- * 1. Strips zero-width & non-printable characters.
- * 2. Unifies leetspeak characters.
- * 3. Collapses excessive repeated letters (e.g., "fuuuuck" -> "fuck").
+ * 1. NFKC Unicode normalization.
+ * 2. Strips zero-width, invisible format, & RTL override characters.
+ * 3. Maps Cyrillic/Greek homoglyphs to Latin.
+ * 4. Unifies leetspeak tokens.
+ * 5. Collapses excessive repeated letters (e.g. "fuuuuck" -> "fuck").
  */
 export function normalizeForSafetyCheck(text: string): { normalized: string; compact: string } {
   if (!text) return { normalized: '', compact: '' };
 
-  // Remove zero-width / invisible format characters
-  let clean = text
-    .normalize('NFKD')
-    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '')
-    .toLowerCase();
+  // 1. Unicode NFKC normalization
+  let clean = text.normalize('NFKC');
 
-  // Replace leetspeak tokens
+  // 2. Strip zero-width, non-printable, and directional overrides
+  clean = clean.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, '').toLowerCase();
+
+  // 3. Replace homoglyphs
+  for (const [homo, latin] of Object.entries(HOMOGLYPH_MAP)) {
+    if (clean.includes(homo)) {
+      clean = clean.split(homo).join(latin);
+    }
+  }
+
+  // 4. Replace leetspeak tokens
   for (const [leet, normal] of Object.entries(LEET_MAP)) {
     clean = clean.split(leet).join(normal);
   }
 
-  // Compress repeated whitespace
-  const normalized = clean.replace(/\s+/g, ' ').trim();
+  // 5. Collapse 3+ repeated characters down to 1 (e.g. "fuuuuck" -> "fuck", "niiiice" -> "nice")
+  const collapsed = clean.replace(/(.)\1{2,}/g, '$1');
 
-  // Create a compact version with internal punctuation/delimiters removed
-  // (detects "f.u.c.k", "h-a-t-e", "s p a c e d")
+  // Compress repeated whitespace
+  const normalized = collapsed.replace(/\s+/g, ' ').trim();
+
+  // Create compact version with delimiters stripped (e.g. "f.u.c.k", "s p a c e d")
   const compact = normalized.replace(/[^a-z0-9]/g, '');
 
   return { normalized, compact };
@@ -100,11 +124,9 @@ export function normalizeForSafetyCheck(text: string): { normalized: string; com
  */
 function matchWords(text: string, words: string[]): boolean {
   for (const word of words) {
-    // Regex with word boundaries
     const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`\\b${escaped}\\b`, 'i');
     if (regex.test(text)) {
-      // Ensure the matched word is not in the safe whitelist
       const match = text.match(regex);
       if (match && !SAFE_WHITELIST.has(match[0].toLowerCase())) {
         return true;
@@ -211,7 +233,6 @@ export function evaluateTextSafety(text: string, context: 'username' | 'room_nam
   }
 
   // 4. Sexually Explicit Content
-  // Notice: 'cp' in compact could trigger on words, so only check explicit words or dangerous compact combos
   if (
     matchWords(normalized, SEXUAL_WORDS) ||
     matchCompact(compact, ['childporn', 'pedophile', 'blowjob', 'deepthroat', 'creampie'])
@@ -237,3 +258,71 @@ export function evaluateTextSafety(text: string, context: 'username' | 'room_nam
 
   return { isSafe: true };
 }
+
+export interface StrikeStatus {
+  strikes: number;
+  isMuted: boolean;
+  action: 'NONE' | 'WARNED' | 'CHAT_MUTED' | 'NOTIFY_HOST';
+  message?: string;
+}
+
+/**
+ * Strike tracker for rate-limited chat moderation:
+ * Strike 1: Warning
+ * Strike 2: Chat Muted
+ * Strike 3+: Host notified of repeated offender
+ */
+export class StrikeTracker {
+  private strikes: Map<string, { count: number; lastViolation: number; isMuted: boolean }> = new Map();
+
+  public recordViolation(participantId: string): StrikeStatus {
+    const now = Date.now();
+    let record = this.strikes.get(participantId);
+
+    // Strike decay after 10 minutes of good behavior
+    if (!record || now - record.lastViolation > 10 * 60 * 1000) {
+      record = { count: 1, lastViolation: now, isMuted: false };
+    } else {
+      record.count++;
+      record.lastViolation = now;
+    }
+
+    this.strikes.set(participantId, record);
+
+    if (record.count === 1) {
+      return {
+        strikes: 1,
+        isMuted: false,
+        action: 'WARNED',
+        message: 'Warning: Your message violated safety guidelines. Further violations will mute your chat.'
+      };
+    } else if (record.count === 2) {
+      record.isMuted = true;
+      return {
+        strikes: 2,
+        isMuted: true,
+        action: 'CHAT_MUTED',
+        message: 'Your chat has been muted for repeated safety violations.'
+      };
+    } else {
+      record.isMuted = true;
+      return {
+        strikes: record.count,
+        isMuted: true,
+        action: 'NOTIFY_HOST',
+        message: 'Participant repeatedly violating safety guidelines. Host alerted.'
+      };
+    }
+  }
+
+  public isParticipantChatMuted(participantId: string): boolean {
+    const record = this.strikes.get(participantId);
+    return !!record?.isMuted;
+  }
+
+  public resetParticipant(participantId: string): void {
+    this.strikes.delete(participantId);
+  }
+}
+
+export const strikeTracker = new StrikeTracker();

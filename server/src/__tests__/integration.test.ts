@@ -160,11 +160,54 @@ describe('STATIC Full Integration: Chat Sync, Clear Lounge, Stop Invitations & H
         if (callback) callback({ success: true });
       });
 
+      socket.on('reconnect-session', ({ roomId, sessionToken }, callback) => {
+        const result = roomManager.joinRoom(roomId, socket.id, '', sessionToken);
+        if (!result.success || !result.participant || !result.room) {
+          return callback({ success: false, error: result.error });
+        }
+        if (result.supersededSocketId) {
+          io.to(result.supersededSocketId).emit('session-replaced', {
+            reason: 'Your session was opened in another window or device.'
+          });
+          io.sockets.sockets.get(result.supersededSocketId)?.disconnect(true);
+        }
+        currentRoomId = result.room.roomId;
+        socket.join(result.room.roomId);
+        if (result.hostReconnected) {
+          io.to(result.room.roomId).emit('host-reconnected', {
+            hostId: result.participant.participantId,
+            message: 'The host has reconnected.'
+          });
+        }
+        const clientState = roomManager.getClientRoomState(result.room, result.participant);
+        callback({ success: true, state: clientState });
+        broadcastRoomState(result.room.roomId);
+      });
+
       socket.on('signal-peer', (payload) => {
         if (!currentRoomId) return;
         const room = roomManager.getRoom(currentRoomId);
         if (!room) return;
         signaling.handleSignal(socket, room, payload);
+      });
+
+      socket.on('disconnect', () => {
+        const result = roomManager.handleUnexpectedDisconnect(socket.id, (room, newHost) => {
+          if (newHost) {
+            io.to(room.roomId).emit('host-changed', {
+              newHostId: newHost.participantId,
+              message: `${newHost.displayName} is now running the room.`
+            });
+          }
+          broadcastRoomState(room.roomId);
+        });
+
+        if (result.room && result.isHostGracePeriod) {
+          io.to(result.room.roomId).emit('host-disconnect-warning', {
+            secondsRemaining: result.graceSeconds || 8,
+            message: 'Host disconnected. Holding room for reconnection (8s)…'
+          });
+        }
       });
     });
 
@@ -298,5 +341,98 @@ describe('STATIC Full Integration: Chat Sync, Clear Lounge, Stop Invitations & H
     guestPartySocket.close();
     guestLoungeSocket.close();
     outsiderSocket.close();
+  });
+
+  it('reconnects host within 8-second grace period and restores room authority', async () => {
+    const hostSocket = await createClient();
+    const guestSocket = await createClient();
+
+    // Host creates room
+    const createRes = await new Promise<any>((resolve) => {
+      hostSocket.emit('create-room', { roomName: 'Grace Room', displayName: 'GraceHost' }, resolve);
+    });
+    const roomId = createRes.roomId;
+    const hostToken = createRes.sessionToken;
+
+    // Guest joins
+    await new Promise<any>((resolve) => {
+      guestSocket.emit('join-room', { roomId, displayName: 'GuestListener' }, resolve);
+    });
+
+    // Guest listens for grace disconnect warning
+    const graceWarningPromise = new Promise<any>((resolve) => {
+      guestSocket.on('host-disconnect-warning', resolve);
+    });
+
+    // Host socket disconnects unexpectedly
+    hostSocket.disconnect();
+
+    const warning = await graceWarningPromise;
+    expect(warning.secondsRemaining).toBe(8);
+
+    // Guest listens for host reconnect notification
+    const hostReconnectedPromise = new Promise<any>((resolve) => {
+      guestSocket.on('host-reconnected', resolve);
+    });
+
+    // Host reconnects with session token within grace period
+    const newHostSocket = await createClient();
+    const reconnectRes = await new Promise<any>((resolve) => {
+      newHostSocket.emit('reconnect-session', { roomId, sessionToken: hostToken }, resolve);
+    });
+    expect(reconnectRes.success).toBe(true);
+
+    const reconnectedEvent = await hostReconnectedPromise;
+    expect(reconnectedEvent.message).toBe('The host has reconnected.');
+
+    newHostSocket.close();
+    guestSocket.close();
+  });
+
+  it('supersedes previous socket when reconnecting with same session token', async () => {
+    const socketA = await createClient();
+
+    // User creates room
+    const createRes = await new Promise<any>((resolve) => {
+      socketA.emit('create-room', { roomName: 'Supersede Room', displayName: 'MultiTabUser' }, resolve);
+    });
+    const roomId = createRes.roomId;
+    const token = createRes.sessionToken;
+
+    const replacedPromise = new Promise<any>((resolve) => {
+      socketA.on('session-replaced', resolve);
+    });
+
+    // User opens new tab (socketB) with same session token
+    const socketB = await createClient();
+    const reconnectRes = await new Promise<any>((resolve) => {
+      socketB.emit('reconnect-session', { roomId, sessionToken: token }, resolve);
+    });
+    expect(reconnectRes.success).toBe(true);
+
+    const replacedEvent = await replacedPromise;
+    expect(replacedEvent.reason).toContain('another window or device');
+
+    socketA.close();
+    socketB.close();
+  });
+
+  it('broadcasts server-restarting notice to connected clients', async () => {
+    const client = await createClient();
+
+    const restartPromise = new Promise<any>((resolve) => {
+      client.on('server-restarting', resolve);
+    });
+
+    io.emit('server-restarting', {
+      message: 'Server is restarting for an upgrade. Reconnecting in 3 seconds…',
+      reconnectAfterMs: 3000
+    });
+
+    const restartNotice = await restartPromise;
+    expect(restartNotice.reconnectAfterMs).toBe(3000);
+    expect(restartNotice.message).toContain('restarting');
+
+    client.close();
   });
 });

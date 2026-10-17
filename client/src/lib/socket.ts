@@ -10,12 +10,14 @@ export function getSocket(): Socket {
     const isDev = window.location.port === '5173';
     const serverUrl = envUrl || (isDev ? 'http://localhost:3001' : window.location.origin);
 
+    // Jittered exponential backoff reconnect with strict WebSocket transport
     socketInstance = io(serverUrl, {
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: 15,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
+      randomizationFactor: 0.5,
       timeout: 10000
     });
   }
@@ -28,7 +30,13 @@ export function subscribeConnectionStatus(onChange: (status: ConnectionStatus) =
   const handleConnect = () => onChange('CONNECTED');
   const handleConnecting = () => onChange('CONNECTING');
   const handleReconnectAttempt = () => onChange('RECONNECTING');
-  const handleDisconnect = () => onChange('OFFLINE');
+  const handleDisconnect = (reason: string) => {
+    if (reason === 'io server disconnect') {
+      onChange('OFFLINE');
+    } else {
+      onChange('RECONNECTING');
+    }
+  };
 
   socket.on('connect', handleConnect);
   socket.on('connecting', handleConnecting);

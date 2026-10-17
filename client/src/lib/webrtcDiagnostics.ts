@@ -1,12 +1,16 @@
 /**
- * STATIC — WebRTC Diagnostics & Quality Monitor
+ * STATIC — WebRTC Diagnostics & Adaptive Quality Controller
  * 
  * Periodically queries RTCPeerConnection.getStats() for all active party peers.
- * Analyzes RTT, Jitter, Packet Loss, Bitrates, Codec, and ICE states to evaluate
- * real-time connection health (EXCELLENT, GOOD, UNSTABLE, POOR).
+ * Evaluates real-time connection health and drives the adaptive quality loop:
+ * - Computes RTT, Jitter, Loss %, and Outgoing Bitrates every 2 seconds.
+ * - Hysteresis: Requires 3 consecutive samples before changing adaptive tiers.
+ * - Rate-limits changes to prevent oscillating bitrate churn.
+ * - Sets adaptive target bitrates (24–64 kbps) and jitterBufferTarget (20–120ms).
  */
 
 export type ConnectionQuality = 'EXCELLENT' | 'GOOD' | 'UNSTABLE' | 'POOR';
+export type AdaptiveQualityTier = 'GOOD' | 'FAIR' | 'POOR' | 'CRITICAL';
 
 export interface PeerConnectionStats {
   peerId: string; // participantId or socketId
@@ -14,6 +18,9 @@ export interface PeerConnectionStats {
   connectionState: RTCPeerConnectionState;
   iceConnectionState: RTCIceConnectionState;
   quality: ConnectionQuality;
+  adaptiveTier: AdaptiveQualityTier;
+  targetBitrateKbps: number;
+  recommendedJitterBufferMs: number;
   roundTripTimeMs: number;
   jitterMs: number;
   packetsLost: number;
@@ -35,15 +42,30 @@ interface PeerHistory {
   timestamp: number;
 }
 
+interface AdaptivePeerState {
+  currentTier: AdaptiveQualityTier;
+  candidateTier: AdaptiveQualityTier;
+  consecutiveCandidateCount: number;
+  lastTierChangeTime: number;
+  targetBitrateBps: number;
+}
+
 export interface DiagnosticsCallbacks {
   onStatsUpdated?: (stats: Map<string, PeerConnectionStats>) => void;
   onQualityChanged?: (peerId: string, quality: ConnectionQuality) => void;
+  onAdaptiveTierChanged?: (
+    peerId: string,
+    tier: AdaptiveQualityTier,
+    targetBitrateBps: number,
+    recommendedJitterBufferMs: number
+  ) => void;
 }
 
 export class WebRTCDiagnostics {
   private peerHistories: Map<string, PeerHistory> = new Map();
   private latestStats: Map<string, PeerConnectionStats> = new Map();
   private prevQualities: Map<string, ConnectionQuality> = new Map();
+  private adaptiveStates: Map<string, AdaptivePeerState> = new Map();
   private intervalId: NodeJS.Timeout | null = null;
   private callbacks: DiagnosticsCallbacks;
 
@@ -52,9 +74,12 @@ export class WebRTCDiagnostics {
   }
 
   /**
-   * Starts periodic polling of getStats()
+   * Starts periodic polling of getStats() (Default 2000ms as per Phase 1 spec)
    */
-  public start(getPeers: () => Array<{ id: string; socketId: string; pc: RTCPeerConnection }>, intervalMs: number = 2500) {
+  public start(
+    getPeers: () => Array<{ id: string; socketId: string; pc: RTCPeerConnection }>,
+    intervalMs: number = 2000
+  ) {
     if (this.intervalId) {
       clearInterval(this.intervalId);
     }
@@ -121,7 +146,9 @@ export class WebRTCDiagnostics {
     const codecMap = new Map<string, string>();
     report.forEach((stat) => {
       if (stat.type === 'codec') {
-        const mime = stat.mimeType ? `${stat.mimeType} ${stat.clockRate ? stat.clockRate + 'Hz' : ''}`.trim() : stat.name;
+        const mime = stat.mimeType
+          ? `${stat.mimeType} ${stat.clockRate ? stat.clockRate + 'Hz' : ''}`.trim()
+          : stat.name;
         if (mime) codecMap.set(stat.id, mime);
       }
     });
@@ -131,12 +158,16 @@ export class WebRTCDiagnostics {
       if (stat.type === 'candidate-pair' && (stat.nominated || stat.state === 'succeeded')) {
         if (typeof stat.currentRoundTripTime === 'number') {
           roundTripTimeMs = Math.round(stat.currentRoundTripTime * 1000);
-        } else if (typeof stat.totalRoundTripTime === 'number' && typeof stat.responsesReceived === 'number' && stat.responsesReceived > 0) {
+        } else if (
+          typeof stat.totalRoundTripTime === 'number' &&
+          typeof stat.responsesReceived === 'number' &&
+          stat.responsesReceived > 0
+        ) {
           roundTripTimeMs = Math.round((stat.totalRoundTripTime / stat.responsesReceived) * 1000);
         }
       }
 
-      // 2. Inbound RTP for audio (inbound bitrate, packet loss, jitter, codec, concealed samples)
+      // 2. Inbound RTP for audio
       if (stat.type === 'inbound-rtp' && (stat.kind === 'audio' || stat.mediaType === 'audio')) {
         if (typeof stat.jitter === 'number') {
           jitterMs = Math.round(stat.jitter * 1000);
@@ -158,7 +189,7 @@ export class WebRTCDiagnostics {
         }
       }
 
-      // 3. Outbound RTP for audio (outbound bitrate)
+      // 3. Outbound RTP for audio
       if (stat.type === 'outbound-rtp' && (stat.kind === 'audio' || stat.mediaType === 'audio')) {
         if (typeof stat.bytesSent === 'number') {
           totalBytesSent = stat.bytesSent;
@@ -184,17 +215,14 @@ export class WebRTCDiagnostics {
       const deltaPacketsIn = Math.max(0, totalPacketsReceived - history.packetsReceived);
       const deltaPacketsLost = Math.max(0, totalPacketsLost - history.packetsLost);
 
-      // Bitrate in kbps
       inboundBitrateKbps = Math.round((deltaBytesIn * 8) / deltaMs);
       outboundBitrateKbps = Math.round((deltaBytesOut * 8) / deltaMs);
 
-      // Packet loss in %
       const totalExpected = deltaPacketsIn + deltaPacketsLost;
       if (totalExpected > 0) {
         packetLossPercent = Math.round((deltaPacketsLost / totalExpected) * 100);
       }
     } else {
-      // First tick fallback
       if (totalPacketsReceived + totalPacketsLost > 0) {
         packetLossPercent = Math.round((totalPacketsLost / (totalPacketsReceived + totalPacketsLost)) * 100);
       }
@@ -209,7 +237,7 @@ export class WebRTCDiagnostics {
       timestamp: now
     });
 
-    // Evaluate Quality
+    // Evaluate Quality & Adaptive Quality Tier
     const quality = this.determineQuality(
       pc.connectionState,
       pc.iceConnectionState,
@@ -218,12 +246,23 @@ export class WebRTCDiagnostics {
       packetLossPercent
     );
 
+    const { adaptiveTier, targetBitrateBps, recommendedJitterBufferMs } = this.processAdaptiveController(
+      peerId,
+      roundTripTimeMs,
+      jitterMs,
+      packetLossPercent,
+      pc.connectionState
+    );
+
     return {
       peerId,
       remoteSocketId: socketId,
       connectionState: pc.connectionState,
       iceConnectionState: pc.iceConnectionState,
       quality,
+      adaptiveTier,
+      targetBitrateKbps: Math.round(targetBitrateBps / 1000),
+      recommendedJitterBufferMs,
       roundTripTimeMs,
       jitterMs,
       packetsLost: totalPacketsLost,
@@ -239,8 +278,97 @@ export class WebRTCDiagnostics {
   }
 
   /**
-   * Evaluates connection state based on RTT, jitter, and packet loss
+   * Adaptive Quality Controller with Hysteresis & Rate-Limiting
+   * - Requires 3 consecutive samples in candidate tier before transition.
+   * - Rate-limits changes to at least 4s between shifts (unless catastrophic loss > 15%).
    */
+  private processAdaptiveController(
+    peerId: string,
+    rtt: number,
+    jitter: number,
+    lossPercent: number,
+    connState: RTCPeerConnectionState
+  ): { adaptiveTier: AdaptiveQualityTier; targetBitrateBps: number; recommendedJitterBufferMs: number } {
+    let measuredTier: AdaptiveQualityTier = 'GOOD';
+
+    if (connState === 'disconnected' || connState === 'failed' || lossPercent >= 10 || rtt > 350) {
+      measuredTier = 'CRITICAL';
+    } else if (lossPercent >= 5 || rtt > 250 || jitter > 60) {
+      measuredTier = 'POOR';
+    } else if (lossPercent >= 2 || rtt > 160 || jitter > 35) {
+      measuredTier = 'FAIR';
+    } else {
+      measuredTier = 'GOOD';
+    }
+
+    const now = Date.now();
+    let state = this.adaptiveStates.get(peerId);
+    if (!state) {
+      state = {
+        currentTier: measuredTier,
+        candidateTier: measuredTier,
+        consecutiveCandidateCount: 0,
+        lastTierChangeTime: now,
+        targetBitrateBps: this.getTargetBitrateForTier(measuredTier)
+      };
+      this.adaptiveStates.set(peerId, state);
+    }
+
+    // Check candidate tier consistency (Hysteresis = 3 samples)
+    if (measuredTier === state.candidateTier) {
+      state.consecutiveCandidateCount++;
+    } else {
+      state.candidateTier = measuredTier;
+      state.consecutiveCandidateCount = 1;
+    }
+
+    const timeSinceLastChange = now - state.lastTierChangeTime;
+    const isCatastrophic = measuredTier === 'CRITICAL' && lossPercent >= 15;
+    const meetsHysteresis = state.consecutiveCandidateCount >= 3;
+    const meetsRateLimit = timeSinceLastChange >= 4000;
+
+    if (state.candidateTier !== state.currentTier && (isCatastrophic || (meetsHysteresis && meetsRateLimit))) {
+      state.currentTier = state.candidateTier;
+      state.lastTierChangeTime = now;
+      state.targetBitrateBps = this.getTargetBitrateForTier(state.currentTier);
+
+      const jitterBufferMs = this.getJitterBufferTargetForTier(state.currentTier);
+      this.callbacks.onAdaptiveTierChanged?.(peerId, state.currentTier, state.targetBitrateBps, jitterBufferMs);
+    }
+
+    return {
+      adaptiveTier: state.currentTier,
+      targetBitrateBps: state.targetBitrateBps,
+      recommendedJitterBufferMs: this.getJitterBufferTargetForTier(state.currentTier)
+    };
+  }
+
+  private getTargetBitrateForTier(tier: AdaptiveQualityTier): number {
+    switch (tier) {
+      case 'GOOD':
+        return 52000; // 52 kbps (range 48-64k)
+      case 'FAIR':
+        return 40000; // 40 kbps
+      case 'POOR':
+        return 28000; // 28 kbps (range 24-32k)
+      case 'CRITICAL':
+        return 24000; // 24 kbps
+    }
+  }
+
+  private getJitterBufferTargetForTier(tier: AdaptiveQualityTier): number {
+    switch (tier) {
+      case 'GOOD':
+        return 30; // 30ms playout delay
+      case 'FAIR':
+        return 50; // 50ms playout delay
+      case 'POOR':
+        return 80; // 80ms playout delay
+      case 'CRITICAL':
+        return 120; // 120ms playout delay
+    }
+  }
+
   private determineQuality(
     connState: RTCPeerConnectionState,
     iceState: RTCIceConnectionState,
@@ -275,6 +403,7 @@ export class WebRTCDiagnostics {
     this.peerHistories.delete(peerId);
     this.latestStats.delete(peerId);
     this.prevQualities.delete(peerId);
+    this.adaptiveStates.delete(peerId);
   }
 
   public stop() {
@@ -285,5 +414,6 @@ export class WebRTCDiagnostics {
     this.peerHistories.clear();
     this.latestStats.clear();
     this.prevQualities.clear();
+    this.adaptiveStates.clear();
   }
 }

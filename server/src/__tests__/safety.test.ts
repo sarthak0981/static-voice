@@ -144,4 +144,64 @@ describe('STATIC Safety & Content Moderation Framework', () => {
       expect(joinResult.participant?.displayName).toBe('GuestMusician');
     });
   });
+
+  describe('4. Phase 4 Advanced Moderation: Homoglyphs, Repeats & Strike Tracking', () => {
+    it('detects homoglyphs using Cyrillic lookalike letters', () => {
+      // Cyrillic 'у' (U+0443) instead of Latin 'u'
+      const homoglyph1 = 'f\u0443ck';
+      const res1 = evaluateTextSafety(homoglyph1, 'chat');
+      expect(res1.isSafe).toBe(false);
+
+      // Cyrillic 'а' (U+0430) and 'і' (U+0456)
+      const homoglyph2 = 'n\u0456gg\u0430';
+      const res2 = evaluateTextSafety(homoglyph2, 'chat');
+      expect(res2.isSafe).toBe(false);
+      expect(res2.category).toBe('HATE_SPEECH');
+    });
+
+    it('collapses repeated characters to detect elongation evasion', () => {
+      const repeated1 = 'fuuuuuck this';
+      const res1 = evaluateTextSafety(repeated1, 'chat');
+      expect(res1.isSafe).toBe(false);
+      expect(res1.category).toBe('SEVERE_PROFANITY');
+
+      const repeated2 = 'biiiiiitch';
+      const res2 = evaluateTextSafety(repeated2, 'chat');
+      expect(res2.isSafe).toBe(false);
+    });
+
+    it('strips zero-width characters and directional overrides', () => {
+      // Zero-width space U+200B and joiner U+200D
+      const zeroWidth = 'f\u200Bu\u200Dc\u200Bk';
+      const res = evaluateTextSafety(zeroWidth, 'chat');
+      expect(res.isSafe).toBe(false);
+    });
+
+    it('tracks rate-limited strikes: warn -> mute chat -> host notification', async () => {
+      const { StrikeTracker } = await import('../safety.js');
+      const tracker = new StrikeTracker();
+      const user = 'p_violator_123';
+
+      expect(tracker.isParticipantChatMuted(user)).toBe(false);
+
+      // Strike 1: Warning
+      const s1 = tracker.recordViolation(user);
+      expect(s1.strikes).toBe(1);
+      expect(s1.action).toBe('WARNED');
+      expect(tracker.isParticipantChatMuted(user)).toBe(false);
+
+      // Strike 2: Chat Muted
+      const s2 = tracker.recordViolation(user);
+      expect(s2.strikes).toBe(2);
+      expect(s2.action).toBe('CHAT_MUTED');
+      expect(s2.isMuted).toBe(true);
+      expect(tracker.isParticipantChatMuted(user)).toBe(true);
+
+      // Strike 3: Host Notified
+      const s3 = tracker.recordViolation(user);
+      expect(s3.strikes).toBe(3);
+      expect(s3.action).toBe('NOTIFY_HOST');
+      expect(s3.isMuted).toBe(true);
+    });
+  });
 });

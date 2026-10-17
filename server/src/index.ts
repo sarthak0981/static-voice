@@ -5,30 +5,95 @@ import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import crypto from 'node:crypto';
+import helmet from 'helmet';
+import compression from 'compression';
+
+import { config } from './config.js';
+import { logger } from './logger.js';
+import {
+  register,
+  activeRoomsGauge,
+  participantsGauge,
+  queueLengthGauge,
+  reconnectsCounter,
+  gracePeriodSavesCounter,
+  iceConfigRequestsCounter
+} from './metrics.js';
+import { rateLimiter } from './rateLimiter.js';
+import * as schemas from './schemas.js';
 import { RoomManager, InternalRoom } from './roomManager.js';
 import { setupWebRTCSignaling } from './webrtcSignaling.js';
 import { ClientToServerEvents, ServerToClientEvents, ChatMessage, Participant } from './types.js';
-import { evaluateTextSafety } from './safety.js';
+import { evaluateTextSafety, strikeTracker } from './safety.js';
+import { generateHmacTurnCredentials } from './turnCredentials.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = process.env.PORT || 3001;
+const PORT = config.PORT;
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors());
-app.use(express.json());
+// Configure trust proxy
+if (config.TRUST_PROXY) {
+  app.set('trust proxy', config.TRUST_PROXY);
+}
 
+// HTTP security headers & compression
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+  })
+);
+app.use(compression());
+
+// CORS configuration
+const allowedOrigins =
+  config.CORS_ORIGIN === '*'
+    ? '*'
+    : config.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true
+  })
+);
+app.use(express.json({ limit: '100kb' }));
+
+// Keep-alive tuning for HTTP server
+server.keepAliveTimeout = 65000;
+server.headersTimeout = 66000;
+
+// Socket.IO Server configuration
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
   cors: {
-    origin: '*',
+    origin: allowedOrigins,
     methods: ['GET', 'POST']
+  },
+  transports: ['websocket'],
+  perMessageDeflate: false,
+  pingInterval: 10000,
+  pingTimeout: 5000,
+  maxHttpBufferSize: 100 * 1024,
+  connectionStateRecovery: {
+    maxDisconnectionDuration: 2 * 60 * 1000,
+    skipMiddlewares: true
   }
 });
 
 const roomManager = new RoomManager();
 const signaling = setupWebRTCSignaling(io, roomManager);
+
+// Helper for socket IP extraction
+function getSocketIp(socket: any): string {
+  const forwarded = socket.handshake.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string') {
+    return forwarded.split(',')[0].trim();
+  }
+  return socket.handshake.address || socket.id;
+}
 
 function broadcastRoomState(roomId: string) {
   const room = roomManager.getRoom(roomId);
@@ -40,10 +105,69 @@ function broadcastRoomState(roomId: string) {
   }
 }
 
+// Periodic metrics synchronization
+const metricsInterval = setInterval(() => {
+  const rooms = Array.from(roomManager.getAllRooms());
+  activeRoomsGauge.set(rooms.length);
+
+  let party = 0;
+  let lounge = 0;
+  let queued = 0;
+  let disconnected = 0;
+  let totalQueue = 0;
+
+  for (const r of rooms) {
+    totalQueue += r.queue.length;
+    for (const p of r.participants.values()) {
+      if (p.state === 'PARTY') party++;
+      else if (p.state === 'LOUNGE') lounge++;
+      else if (p.state === 'QUEUED') queued++;
+      else if (p.state === 'DISCONNECTED') disconnected++;
+    }
+  }
+
+  participantsGauge.set({ state: 'PARTY' }, party);
+  participantsGauge.set({ state: 'LOUNGE' }, lounge);
+  participantsGauge.set({ state: 'QUEUED' }, queued);
+  participantsGauge.set({ state: 'DISCONNECTED' }, disconnected);
+  queueLengthGauge.set(totalQueue);
+}, 10000);
+metricsInterval.unref();
+
+// Liveness & Readiness Probes
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'STATIC Voice Engine',
+    uptime: Math.floor(process.uptime()),
+    timestamp: Date.now()
+  });
+});
+
+app.get('/ready', (_req, res) => {
+  res.json({
+    status: 'ready',
+    activeRooms: roomManager.getRoomCount(),
+    uptime: Math.floor(process.uptime())
+  });
+});
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (_req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err: any) {
+    res.status(500).end(err.message);
+  }
+});
+
+// Legacy health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'STATIC Voice Engine' });
 });
 
+// Room existence check
 app.get('/api/room/:roomId', (req, res) => {
   const room = roomManager.getRoom(req.params.roomId);
   if (!room) {
@@ -56,17 +180,50 @@ app.get('/api/room/:roomId', (req, res) => {
   });
 });
 
-function getIceServersConfig(): Array<{ urls: string | string[]; username?: string; credential?: string }> {
-  const defaultStun = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' }
-  ];
+function getIceServersConfig(participantId?: string): Array<{ urls: string | string[]; username?: string; credential?: string }> {
+  const defaultStun = config.STUN_SERVERS
+    ? config.STUN_SERVERS.split(',').map((u) => ({ urls: u.trim() }))
+    : [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' }
+      ];
 
-  const turnUrls = process.env.TURN_URLS ? process.env.TURN_URLS.split(',').map((u) => u.trim()).filter(Boolean) : null;
-  const turnUsername = process.env.TURN_USERNAME;
-  const turnCredential = process.env.TURN_CREDENTIAL || process.env.TURN_PASSWORD;
+  const turnSecret = config.TURN_SHARED_SECRET;
+  const turnHost = (config.TURN_HOST || config.TURN_SERVER_URL || '')
+    .replace(/^turns?:/i, '')
+    .replace(/^\/\//, '')
+    .split(':')[0]
+    .trim();
+
+  // 1. Production time-limited HMAC credentials (coturn use-auth-secret scheme)
+  if (turnSecret && turnHost) {
+    const creds = generateHmacTurnCredentials(turnSecret, participantId || 'guest', 7200);
+    return [
+      ...defaultStun,
+      {
+        urls: [`turn:${turnHost}:3478?transport=udp`],
+        username: creds.username,
+        credential: creds.credential
+      },
+      {
+        urls: [`turn:${turnHost}:3478?transport=tcp`],
+        username: creds.username,
+        credential: creds.credential
+      },
+      {
+        urls: [`turns:${turnHost}:443?transport=tcp`],
+        username: creds.username,
+        credential: creds.credential
+      }
+    ];
+  }
+
+  // 2. Documented legacy static TURN fallback
+  const turnUrls = config.TURN_URLS ? config.TURN_URLS.split(',').map((u) => u.trim()).filter(Boolean) : null;
+  const turnUsername = config.TURN_USERNAME;
+  const turnCredential = config.TURN_CREDENTIAL || config.TURN_PASSWORD;
 
   if (turnUrls && turnUrls.length > 0 && turnUsername && turnCredential) {
     return [
@@ -79,7 +236,7 @@ function getIceServersConfig(): Array<{ urls: string | string[]; username?: stri
     ];
   }
 
-  // Fallback public relay for development/carrier NAT testing if no custom TURN env is set
+  // 3. Fallback public relay for development/carrier NAT testing if no custom TURN env is set
   return [
     ...defaultStun,
     {
@@ -99,16 +256,19 @@ app.get('/api/ice-config', (_req, res) => {
   res.json({ iceServers: getIceServersConfig() });
 });
 
+// Client static files
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
-app.use(express.static(clientDistPath, {
-  setHeaders: (res, filePath) => {
-    if (filePath.endsWith('.html')) {
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
+app.use(
+  express.static(clientDistPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
     }
-  }
-}));
+  })
+);
 
 app.get('*', (_req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -123,6 +283,7 @@ app.get('*', (_req, res) => {
 
 io.on('connection', (socket) => {
   let currentRoomId: string | null = null;
+  const socketIp = getSocketIp(socket);
 
   const leaveAllCurrentRooms = () => {
     if (currentRoomId) {
@@ -168,29 +329,70 @@ io.on('connection', (socket) => {
     return null;
   };
 
+  // ICE config negotiation with rate limiting
   socket.on('get-ice-config', (callback) => {
-    if (typeof callback === 'function') {
+    if (typeof callback !== 'function') return;
+
+    if (!rateLimiter.checkRateLimit(socket.id, 'get-ice-config')) {
+      logger.warn({ socketId: socket.id }, 'get-ice-config rate limit exceeded');
       callback({ iceServers: getIceServersConfig() });
+      return;
     }
+
+    iceConfigRequestsCounter.inc();
+    const current = resolveRoomAndParticipant();
+    const pId = current?.participant?.participantId;
+    callback({ iceServers: getIceServersConfig(pId) });
   });
 
-  // 1. Create Room (with custom roomName and sanitized displayName)
-  socket.on('create-room', ({ roomName, displayName, sessionToken }, callback) => {
+  // 1. Create Room
+  socket.on('create-room', (rawPayload, callback) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+
+    if (!rateLimiter.checkRateLimit(socketIp, 'create-room')) {
+      return cb({
+        success: false,
+        errorCode: 'RATE_LIMITED',
+        error: 'Too many rooms created. Please wait a moment.'
+      });
+    }
+
+    if (!rateLimiter.canIpCreateRoom(socketIp, config.MAX_ROOMS_PER_IP)) {
+      return cb({
+        success: false,
+        errorCode: 'ROOM_LIMIT_REACHED',
+        error: 'Maximum active rooms per IP reached.'
+      });
+    }
+
+    if (roomManager.getRoomCount() >= config.MAX_ROOMS_GLOBAL) {
+      return cb({
+        success: false,
+        errorCode: 'GLOBAL_CAPACITY_REACHED',
+        error: 'Server room capacity reached. Please try again soon.'
+      });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.createRoomSchema, rawPayload, cb);
+    if (!validated) return;
+
     try {
       leaveAllCurrentRooms();
 
       const { room, participant } = roomManager.createRoom(
         socket.id,
-        roomName,
-        displayName,
-        sessionToken
+        validated.roomName,
+        validated.displayName,
+        validated.sessionToken
       );
+
+      rateLimiter.registerRoomCreated(socketIp, room.roomId);
       currentRoomId = room.roomId;
       socket.join(room.roomId);
 
       const clientState = roomManager.getClientRoomState(room, participant);
 
-      callback({
+      cb({
         success: true,
         roomId: room.roomId,
         sessionToken: participant.sessionToken,
@@ -199,28 +401,69 @@ io.on('connection', (socket) => {
 
       broadcastRoomState(room.roomId);
     } catch (err: any) {
-      callback({ success: false, error: err.message || 'Failed to create room.' });
+      cb({ success: false, error: err.message || 'Failed to create room.' });
     }
   });
 
-  // 2. Join Room (always requiring chosen displayName and valid code)
-  socket.on('join-room', ({ roomId, displayName, sessionToken }, callback) => {
+  // 2. Join Room
+  socket.on('join-room', (rawPayload, callback) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+
+    const lockout = rateLimiter.isIpJoinLockedOut(socketIp);
+    if (lockout.isLocked) {
+      return cb({
+        success: false,
+        errorCode: 'IP_LOCKED_OUT',
+        error: `Too many failed join attempts. Please wait ${lockout.remainingSeconds}s.`
+      });
+    }
+
+    if (!rateLimiter.checkRateLimit(socketIp, 'join-room')) {
+      return cb({
+        success: false,
+        errorCode: 'RATE_LIMITED',
+        error: 'Joining too fast. Please wait a moment.'
+      });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.joinRoomSchema, rawPayload, cb);
+    if (!validated) return;
+
     try {
       leaveAllCurrentRooms();
 
-      const result = roomManager.joinRoom(roomId, socket.id, displayName, sessionToken);
+      const result = roomManager.joinRoom(
+        validated.roomId,
+        socket.id,
+        validated.displayName,
+        validated.sessionToken
+      );
+
       if (!result.success || !result.participant || !result.room) {
-        return callback({
+        if (result.errorCode === 'NOT_FOUND' || result.errorCode === 'INVALID_INPUT') {
+          rateLimiter.recordFailedJoin(socketIp);
+        }
+        return cb({
           success: false,
           error: result.error,
           errorCode: result.errorCode
         });
       }
 
+      rateLimiter.recordSuccessfulJoin(socketIp);
+
+      if (result.supersededSocketId) {
+        io.to(result.supersededSocketId).emit('session-replaced', {
+          reason: 'Your session was opened in another window or device.'
+        });
+        io.sockets.sockets.get(result.supersededSocketId)?.disconnect(true);
+      }
+
       currentRoomId = result.room.roomId;
       socket.join(result.room.roomId);
 
       if (result.hostReconnected) {
+        gracePeriodSavesCounter.inc();
         io.to(result.room.roomId).emit('host-reconnected', {
           hostId: result.participant.participantId,
           message: 'The host has reconnected.'
@@ -228,7 +471,7 @@ io.on('connection', (socket) => {
       }
 
       const clientState = roomManager.getClientRoomState(result.room, result.participant);
-      callback({
+      cb({
         success: true,
         state: clientState,
         sessionToken: result.participant.sessionToken
@@ -236,24 +479,44 @@ io.on('connection', (socket) => {
 
       broadcastRoomState(result.room.roomId);
     } catch (err: any) {
-      callback({ success: false, error: err.message || 'Failed to join room.' });
+      cb({ success: false, error: err.message || 'Failed to join room.' });
     }
   });
 
   // 3. Reconnect Session
-  socket.on('reconnect-session', ({ roomId, sessionToken }, callback) => {
+  socket.on('reconnect-session', (rawPayload, callback) => {
+    const cb = typeof callback === 'function' ? callback : () => {};
+
+    if (!rateLimiter.checkRateLimit(socketIp, 'reconnect-session')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Reconnecting too fast.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.reconnectSessionSchema, rawPayload, cb);
+    if (!validated) return;
+
     try {
       leaveAllCurrentRooms();
 
-      const result = roomManager.joinRoom(roomId, socket.id, '', sessionToken);
+      const result = roomManager.joinRoom(validated.roomId, socket.id, '', validated.sessionToken);
       if (!result.success || !result.participant || !result.room) {
-        return callback({ success: false, error: result.error });
+        reconnectsCounter.inc({ status: 'failed' });
+        return cb({ success: false, error: result.error });
+      }
+
+      reconnectsCounter.inc({ status: 'success' });
+
+      if (result.supersededSocketId) {
+        io.to(result.supersededSocketId).emit('session-replaced', {
+          reason: 'Your session was opened in another window or device.'
+        });
+        io.sockets.sockets.get(result.supersededSocketId)?.disconnect(true);
       }
 
       currentRoomId = result.room.roomId;
       socket.join(result.room.roomId);
 
       if (result.hostReconnected) {
+        gracePeriodSavesCounter.inc();
         io.to(result.room.roomId).emit('host-reconnected', {
           hostId: result.participant.participantId,
           message: 'The host has reconnected.'
@@ -261,7 +524,7 @@ io.on('connection', (socket) => {
       }
 
       const clientState = roomManager.getClientRoomState(result.room, result.participant);
-      callback({ success: true, state: clientState });
+      cb({ success: true, state: clientState });
       broadcastRoomState(result.room.roomId);
 
       // If reconnected user is in the party, notify peers to establish WebRTC connections
@@ -277,26 +540,32 @@ io.on('connection', (socket) => {
         }
       }
     } catch (err: any) {
-      callback({ success: false, error: err.message || 'Failed to restore session.' });
+      cb({ success: false, error: err.message || 'Failed to restore session.' });
     }
   });
 
-  // 4. Host Admits User from Lounge into Party ("COME ON IN")
-  socket.on('admit-to-party', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+  // 4. Host Admits User from Lounge into Party
+  socket.on('admit-to-party', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.participantTargetSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.admitToParty(room, socket.id, targetParticipantId);
-    if (!result.success || !result.promotedParticipant) {
+    const result = roomManager.admitToParty(room, socket.id, validated.targetParticipantId);
+    if (!result.success || !result.admittedParticipant) {
       return cb({ success: false, error: result.error });
     }
 
-    const admitted = result.promotedParticipant;
+    const admitted = result.admittedParticipant;
     io.to(admitted.socketId).emit('participant-admitted', admitted);
 
-    // Notify all room members of the new party member
     io.to(room.roomId).emit('participant-joined-party', {
       participantId: admitted.participantId,
       displayName: admitted.displayName
@@ -317,10 +586,16 @@ io.on('connection', (socket) => {
   });
 
   // 5. Host Master Control: Clear entire Lounge
-  socket.on('clear-lounge', (payloadOrCallback: any, callback?: any) => {
-    const cb = typeof callback === 'function' ? callback : typeof payloadOrCallback === 'function' ? payloadOrCallback : () => {};
-    const explicitRoomId = typeof payloadOrCallback === 'object' ? payloadOrCallback?.roomId : undefined;
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+  socket.on('clear-lounge', (rawPayload: any, callback?: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof rawPayload === 'function' ? rawPayload : () => {};
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.clearLoungeSchema, typeof rawPayload === 'object' ? rawPayload : {}, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
@@ -329,7 +604,6 @@ io.on('connection', (socket) => {
       return cb({ success: false, error: result.error });
     }
 
-    // Inform every cleared lounge participant
     for (const p of result.clearedParticipants) {
       io.to(p.socketId).emit('lounge-cleared', {
         reason: 'The host cleared the waiting lounge.'
@@ -341,13 +615,20 @@ io.on('connection', (socket) => {
   });
 
   // 6. Host Master Control: Mute participant
-  socket.on('mute-participant', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+  socket.on('mute-participant', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.participantTargetSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.muteParticipant(room, socket.id, targetParticipantId);
+    const result = roomManager.muteParticipant(room, socket.id, validated.targetParticipantId);
     if (!result.success || !result.mutedParticipant) {
       return cb({ success: false, error: result.error });
     }
@@ -361,13 +642,20 @@ io.on('connection', (socket) => {
   });
 
   // 6b. Host Master Control: Unmute participant
-  socket.on('unmute-participant', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+  socket.on('unmute-participant', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.participantTargetSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.unmuteParticipant(room, socket.id, targetParticipantId);
+    const result = roomManager.unmuteParticipant(room, socket.id, validated.targetParticipantId);
     if (!result.success || !result.unmutedParticipant) {
       return cb({ success: false, error: result.error });
     }
@@ -381,10 +669,16 @@ io.on('connection', (socket) => {
   });
 
   // 6c. Party Participant: Toggle Raise Hand
-  socket.on('toggle-raise-hand', (payloadOrCallback: any, callback?: any) => {
-    const cb = typeof callback === 'function' ? callback : typeof payloadOrCallback === 'function' ? payloadOrCallback : () => {};
-    const explicitRoomId = typeof payloadOrCallback === 'object' ? payloadOrCallback?.roomId : undefined;
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+  socket.on('toggle-raise-hand', (rawPayload: any, callback?: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof rawPayload === 'function' ? rawPayload : () => {};
+    if (!rateLimiter.checkRateLimit(socket.id, 'toggle-raise-hand')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Please wait before toggling hand raise.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.toggleRaiseHandSchema, typeof rawPayload === 'object' ? rawPayload : {}, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
@@ -404,13 +698,20 @@ io.on('connection', (socket) => {
   });
 
   // 7. Host Master Control: Transfer host role
-  socket.on('transfer-host', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+  socket.on('transfer-host', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.participantTargetSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.transferHost(room, socket.id, targetParticipantId);
+    const result = roomManager.transferHost(room, socket.id, validated.targetParticipantId);
     if (!result.success || !result.newHost) {
       return cb({ success: false, error: result.error });
     }
@@ -425,13 +726,20 @@ io.on('connection', (socket) => {
   });
 
   // 8. Host Kicks Participant from Lounge/Queue
-  socket.on('kick-participant', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+  socket.on('kick-participant', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.participantTargetSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.kickParticipant(room, socket.id, targetParticipantId);
+    const result = roomManager.kickParticipant(room, socket.id, validated.targetParticipantId);
     if (!result.success || !result.kickedParticipant) {
       return cb({ success: false, error: result.error });
     }
@@ -456,13 +764,20 @@ io.on('connection', (socket) => {
   });
 
   // 9. Host Removes Member from Party
-  socket.on('remove-from-party', ({ targetParticipantId, roomId: explicitRoomId }: any, callback: any) => {
+  socket.on('remove-from-party', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.participantTargetSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.removeFromParty(room, socket.id, targetParticipantId);
+    const result = roomManager.removeFromParty(room, socket.id, validated.targetParticipantId);
     if (!result.success || !result.removedParticipant) {
       return cb({ success: false, error: result.error });
     }
@@ -481,13 +796,20 @@ io.on('connection', (socket) => {
   });
 
   // 10. Host Toggles Invitations (Stop / Reopen)
-  socket.on('toggle-invitations', ({ open, roomId: explicitRoomId }: any, callback: any) => {
+  socket.on('toggle-invitations', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.toggleInvitationsSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.toggleInvitations(room, socket.id, open);
+    const result = roomManager.toggleInvitations(room, socket.id, validated.open);
     if (!result.success) {
       return cb({ success: false, error: result.error });
     }
@@ -498,10 +820,16 @@ io.on('connection', (socket) => {
   });
 
   // 11. Host Ends Room ("END ROOM")
-  socket.on('end-room', (payloadOrCallback?: any, callback?: any) => {
-    const cb = typeof callback === 'function' ? callback : typeof payloadOrCallback === 'function' ? payloadOrCallback : () => {};
-    const explicitRoomId = typeof payloadOrCallback === 'object' ? payloadOrCallback?.roomId : undefined;
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+  socket.on('end-room', (rawPayload?: any, callback?: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof rawPayload === 'function' ? rawPayload : () => {};
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.endRoomSchema, typeof rawPayload === 'object' ? rawPayload : {}, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
@@ -510,6 +838,7 @@ io.on('connection', (socket) => {
       return cb({ success: false, error: result.error });
     }
 
+    rateLimiter.unregisterRoom(socketIp, room.roomId);
     io.to(room.roomId).emit('room-ended', { reason: 'The host closed the room. 👋' });
     io.in(room.roomId).socketsLeave(room.roomId);
     currentRoomId = null;
@@ -518,13 +847,15 @@ io.on('connection', (socket) => {
   });
 
   // 12. Voluntary Leave Room (with manual or auto-transfer)
-  socket.on('leave-room', (options: any, callback: any) => {
-    const cb = typeof callback === 'function' ? callback : typeof options === 'function' ? options : () => {};
-    const explicitRoomId = typeof options === 'object' ? options?.roomId : undefined;
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+  socket.on('leave-room', (rawPayload: any, callback: any) => {
+    const cb = typeof callback === 'function' ? callback : typeof rawPayload === 'function' ? rawPayload : () => {};
+    const validated = schemas.validateEventPayload(schemas.leaveRoomSchema, typeof rawPayload === 'object' ? rawPayload : {}, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (resolved) {
       const { room } = resolved;
-      const result = roomManager.leaveRoom(room, socket.id, options);
+      const result = roomManager.leaveRoom(room, socket.id, validated);
       socket.leave(room.roomId);
 
       if (result.leavingParticipant) {
@@ -547,10 +878,17 @@ io.on('connection', (socket) => {
     cb({ success: true });
   });
 
-  // 13. Party Text Chat (Broadcasted reliably to the entire room)
-  socket.on('send-party-chat', ({ text, roomId: explicitRoomId }: any, callback: any) => {
+  // 13. Party Text Chat
+  socket.on('send-party-chat', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'send-party-chat')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Chatting too fast. Please slow down.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.sendPartyChatSchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room, participant: sender } = resolved;
 
@@ -558,16 +896,31 @@ io.on('connection', (socket) => {
       return cb({ success: false, error: 'Only active party members can chat.' });
     }
 
-    const cleanText = text?.trim();
-    if (!cleanText || cleanText.length > 500) {
-      return cb({ success: false, error: 'Invalid message length.' });
+    if (strikeTracker.isParticipantChatMuted(sender.participantId)) {
+      return cb({ success: false, error: 'Your chat is muted due to safety violations.' });
     }
 
+    const cleanText = validated.text;
     const safety = evaluateTextSafety(cleanText, 'chat');
     if (!safety.isSafe) {
+      const strike = strikeTracker.recordViolation(sender.participantId);
+      if (strike.action === 'NOTIFY_HOST') {
+        const host = room.participants.get(room.hostId);
+        if (host) {
+          io.to(host.socketId).emit('party-chat-message', {
+            id: 'mod_' + crypto.randomBytes(4).toString('hex'),
+            roomId: room.roomId,
+            senderParticipantId: 'system',
+            senderName: 'STATIC Safety',
+            text: `[Moderation Alert]: ${sender.displayName} has accumulated multiple safety violations.`,
+            timestamp: Date.now(),
+            isHost: false
+          });
+        }
+      }
       return cb({
         success: false,
-        error: safety.policyViolation || 'Message violates Community Safety Guidelines.'
+        error: `${safety.policyViolation || 'Message violates Community Safety Guidelines.'} (${strike.message})`
       });
     }
 
@@ -581,23 +934,27 @@ io.on('connection', (socket) => {
       isHost: sender.role === 'HOST'
     };
 
-    // Store in room chat history
     roomManager.addChatMessage(room, chatMsg);
-
-    // Broadcast reliably to all sockets in this room!
     io.to(room.roomId).emit('party-chat-message', chatMsg);
 
     cb({ success: true, message: chatMsg });
   });
 
   // 14. Real-time Party Participant Reordering (Host Only)
-  socket.on('reorder-party', ({ orderedParticipantIds, roomId: explicitRoomId }: any, callback: any) => {
+  socket.on('reorder-party', (rawPayload: any, callback: any) => {
     const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+    if (!rateLimiter.checkRateLimit(socket.id, 'host-action')) {
+      return cb({ success: false, errorCode: 'RATE_LIMITED', error: 'Too many host actions.' });
+    }
+
+    const validated = schemas.validateEventPayload(schemas.reorderPartySchema, rawPayload, cb);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return cb({ success: false, error: 'Not in a room.' });
     const { room } = resolved;
 
-    const result = roomManager.reorderParty(room, socket.id, orderedParticipantIds);
+    const result = roomManager.reorderParty(room, socket.id, validated.orderedParticipantIds);
     if (!result.success) {
       return cb({ success: false, error: result.error });
     }
@@ -607,80 +964,53 @@ io.on('connection', (socket) => {
   });
 
   // 15. Update Microphone State
-  socket.on('update-mic-state', ({ microphoneState, roomId: explicitRoomId }: any) => {
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+  socket.on('update-mic-state', (rawPayload: any) => {
+    const validated = schemas.validateEventPayload(schemas.updateMicStateSchema, rawPayload);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return;
     const { room } = resolved;
 
-    const updated = roomManager.updateMicrophoneState(room, socket.id, microphoneState);
+    const updated = roomManager.updateMicrophoneState(room, socket.id, validated.microphoneState);
     if (updated) {
       broadcastRoomState(room.roomId);
     }
   });
 
-  // 15. Update Speaking Status
-  socket.on('update-speaking', ({ isSpeaking, roomId: explicitRoomId }: any) => {
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
+  // 15b. Update Speaking Status
+  socket.on('update-speaking', (rawPayload: any) => {
+    const validated = schemas.validateEventPayload(schemas.updateSpeakingSchema, rawPayload);
+    if (!validated) return;
+
+    const resolved = resolveRoomAndParticipant(validated.roomId);
     if (!resolved) return;
     const { room } = resolved;
 
-    const updated = roomManager.updateSpeaking(room, socket.id, isSpeaking);
+    const updated = roomManager.updateSpeaking(room, socket.id, validated.isSpeaking);
     if (updated) {
       broadcastRoomState(room.roomId);
     }
   });
 
-  // 16. In-App Session Recording (Host Only)
-  socket.on('start-recording', ({ roomId: explicitRoomId }: any, callback: any) => {
-    const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
-    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
-    const { room, participant } = resolved;
+  // 16. WebRTC Peer Signaling with Schema Validation & Rate Limiting
+  socket.on('signal-peer', (rawPayload: any, callback?: any) => {
+    const validated = schemas.validateEventPayload(schemas.signalPeerSchema, rawPayload, callback);
+    if (!validated) return;
 
-    if (participant.role !== 'HOST') {
-      return cb({ success: false, error: 'Only the host can record the session.' });
+    const resolved = resolveRoomAndParticipant(validated.roomId);
+    if (!resolved) {
+      if (typeof callback === 'function') {
+        callback({ success: false, error: 'Not in a room.' });
+      }
+      return;
     }
-
-    roomManager.setRecordingState(room, true);
-    broadcastRoomState(room.roomId);
-    io.to(room.roomId).emit('recording-status-changed', {
-      isRecording: true,
-      hostName: participant.displayName
-    });
-
-    cb({ success: true });
-  });
-
-  socket.on('stop-recording', ({ roomId: explicitRoomId }: any, callback: any) => {
-    const cb = typeof callback === 'function' ? callback : () => {};
-    const resolved = resolveRoomAndParticipant(explicitRoomId);
-    if (!resolved) return cb({ success: false, error: 'Not in a room.' });
-    const { room, participant } = resolved;
-
-    if (participant.role !== 'HOST') {
-      return cb({ success: false, error: 'Only the host can control recording.' });
-    }
-
-    roomManager.setRecordingState(room, false);
-    broadcastRoomState(room.roomId);
-    io.to(room.roomId).emit('recording-status-changed', {
-      isRecording: false,
-      hostName: participant.displayName
-    });
-
-    cb({ success: true });
-  });
-
-  // 16. WebRTC Peer Signaling
-  socket.on('signal-peer', (payload: any) => {
-    const resolved = resolveRoomAndParticipant(payload?.roomId);
-    if (!resolved) return;
     const { room } = resolved;
 
-    signaling.handleSignal(socket, room, payload);
+    signaling.handleSignal(socket, room, validated, callback);
   });
 
-  // 17. Socket Disconnect with 8-second grace period for Host
+  // 18. Socket Disconnect with 8-second grace period for Host
   socket.on('disconnect', () => {
     const result = roomManager.handleUnexpectedDisconnect(socket.id, (room, newHost) => {
       if (newHost) {
@@ -718,8 +1048,58 @@ io.on('connection', (socket) => {
   });
 });
 
+// Graceful Shutdown & Global Exception Handlers
+let isShuttingDown = false;
+
+function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  logger.info({ signal }, 'Initiating graceful server shutdown...');
+
+  // Notify clients to automatically reconnect with jittered backoff
+  io.emit('server-restarting', {
+    message: 'Server is restarting for an upgrade. Reconnecting in 3 seconds…',
+    reconnectAfterMs: 3000
+  });
+
+  clearInterval(metricsInterval);
+
+  io.close(() => {
+    logger.info('Socket.IO connection pool closed');
+  });
+
+  const shutdownTimeout = setTimeout(() => {
+    logger.error('Graceful shutdown timed out after 10s, forcing exit');
+    process.exit(1);
+  }, 10000);
+
+  server.close((err) => {
+    clearTimeout(shutdownTimeout);
+    rateLimiter.destroy();
+    roomManager.destroy();
+    if (err) {
+      logger.error({ err }, 'Error closing HTTP server');
+      process.exit(1);
+    }
+    logger.info('STATIC server gracefully terminated');
+    process.exit(0);
+  });
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.fatal({ reason, promise }, 'Unhandled Promise Rejection');
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught Exception');
+  gracefulShutdown('uncaughtException');
+});
+
 server.listen(PORT, () => {
-  console.log(`[STATIC] Real-time voice engine listening on http://localhost:${PORT}`);
+  logger.info({ port: PORT, env: config.NODE_ENV }, 'STATIC Real-time Voice Engine online');
 });
 
 export { app, server, roomManager, io };

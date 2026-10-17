@@ -191,6 +191,11 @@ export const VoiceDiagnosticsModal: React.FC<VoiceDiagnosticsModalProps> = ({
                         </div>
                         <div className="flex items-center gap-2">
                           {getQualityBadge(stat.quality)}
+                          {stat.adaptiveTier && (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 border border-white/10 text-emerald-400 font-mono">
+                              {stat.adaptiveTier} ({stat.targetBitrateKbps}k)
+                            </span>
+                          )}
                           <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[#8A99AD]">
                             {stat.codec}
                           </span>

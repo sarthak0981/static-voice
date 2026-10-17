@@ -1,53 +1,108 @@
-# STATIC — Ephemeral, Zero-Trust Voice Rooms
+# STATIC — Discord-Grade Ephemeral Voice Platform (v1.4.0)
 
-> Minimalist, privacy-first peer-to-peer WebRTC voice party application with Waiting Lounge approval, real-time drag-and-drop party ordering, synthesized Web Audio chimes, and responsive mobile HUD.
+> Minimalist, privacy-first, full-mesh WebRTC P2P voice platform engineered for Discord-grade audio quality, production hardening, and zero-trust ephemeral sessions.
 
 ---
 
-## ✨ Features
+## ✨ Features (v1.4.0 Upgrade)
 
-- **Peer-to-Peer Encrypted Voice**: Direct full-duplex WebRTC mesh between Party members with Hardware Acoustic Echo Cancellation (AEC), noise suppression, and Opus in-band FEC/DTX.
-- **Host-Controlled Waiting Lounge**: Guests enter a relaxed, isolated waiting room ("Secured Lounge"). Hosts admit guests ("COME ON IN") or clear the lounge.
-- **Real-Time Layout Synchronization**: Hosts can drag-and-drop party members into custom arrangements; layout updates stream live to all participants.
-- **Ephemeral & Zero-Trust**: No databases, no persistent storage, no permanent accounts. Rooms and participants exist only in memory during the active session.
-- **Master Privacy Controls**: Stop and reopen invitations dynamically with customizable room codes.
-- **Synthesized Audio Notifications**: Pure Web Audio API chime notifications with zero external audio assets.
-- **Cross-Platform & Mobile Optimized**: Tailored for iOS Safari, Android Chrome, tablets, and desktop with dynamic safe-area insets (`100dvh`), floating notch HUD, and autoplay audio unlock recovery.
+- **Discord-Grade Voice Quality**: Pure SDP Opus munging (`minptime=10`, in-band FEC, DTX, adaptive 24k–64k bitrate, `ptime:20`, and Opus RED prioritization).
+- **Adaptive Playout & Latency**: Dynamic jitter buffer target (20ms–60ms) and 2-second quality loop with 3-sample hysteresis.
+- **Hardware & Device Resilience**: Auto-fallback microphone constraints, `contentHint = 'speech'`, hot `replaceTrack` on audio input changes without renegotiation, and seamless ICE restart on network changes.
+- **Coturn HMAC-SHA1 Relays**: Time-limited cryptographic TURN credentials (`use-auth-secret`) supporting UDP/TCP 3478 and TLS 443 firewall bypass.
+- **Hardened Backend**: Zod schema validation on every Socket.IO event, IP and socket token bucket rate limiting, anti-enumeration exponential IP lockout, and SHA-256 session token hashing (`crypto.timingSafeEqual`).
+- **Atomic Concurrency**: Per-room async mutex serialization preventing race conditions during concurrent joins, admits, kicks, and host transfers.
+- **Content Moderation Engine**: Unicode NFKC normalization, homoglyph mapping, repeated character collapse, and rate-limited strike tracking (Warn → Chat Mute → Host Alert).
+- **Observability**: Prometheus `/metrics` endpoint (`prom-client`), structured JSON logging (`pino`), and `/health` and `/ready` probes.
+- **Zero Leaks & Graceful Shutdown**: Complete cleanup of connections, analysers, and timers; `server-restarting` client reconnect notification.
 
 ---
 
 ## 🛠 Tech Stack
 
-- **Client**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, Canvas Confetti
-- **Server**: Node.js, Express, Socket.io (WebSocket signaling & room state authority), Vitest
-- **Audio & Networking**: WebRTC (RTCPeerConnection), Web Audio API (AnalyserNode VAD & Oscillator synthesis)
+- **Client**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons
+- **Server**: Node.js 20+, Express, Socket.IO, Zod, Helmet, Compression, Pino, Prom-client, Vitest
+- **Audio & DSP**: WebRTC (RTCPeerConnection full mesh), Web Audio API, AudioWorklet noise suppression
+- **TURN Relay**: Coturn with time-limited HMAC credentials
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### 1. Install & Build
 ```bash
 npm install
-cd client && npm install
-cd ../server && npm install
+npm run build
 ```
 
-### 2. Development Mode
-Start both client and signaling server concurrently:
+### 2. Run in Development
 ```bash
-# In the root directory:
 npm run dev
 ```
+Client runs on `http://localhost:5173` and backend runs on `http://localhost:3001`.
 
-### 3. Production Build & Tests
+### 3. Run Test Suite
 ```bash
-# Build client:
-npm --prefix client run build
-
-# Run server integration tests:
-npm --prefix server test
+npm test
 ```
+Runs the full Vitest suite (49 unit and integration tests across voice DSP, security, and backend logic).
+
+---
+
+## ⚙️ Environment Configuration
+
+| Variable | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `NODE_ENV` | `string` | `development` | Runtime environment (`development`, `production`, `test`) |
+| `PORT` | `number` | `3001` | HTTP and WebSocket server port |
+| `CORS_ORIGIN` | `string` | `*` | Allowed CORS origins. **Must be explicitly configured in production.** |
+| `TRUST_PROXY` | `boolean\|string` | `false` | Reverse proxy trust configuration (e.g. `true`, `1`, or loopback CIDR) |
+| `MAX_ROOMS_GLOBAL` | `number` | `500` | Global maximum active room capacity |
+| `MAX_ROOMS_PER_IP` | `number` | `10` | Maximum active rooms allowed per IP address |
+| `MAX_QUEUE_CAPACITY` | `number` | `200` | Maximum queue length per room |
+| `TURN_SHARED_SECRET`| `string` | `(optional)` | Shared secret for Coturn time-limited HMAC token generation |
+| `TURN_HOST` | `string` | `(optional)` | Public hostname of the Coturn relay server |
+| `STUN_SERVERS` | `string` | Google/CF STUN | Comma-separated list of STUN server URLs |
+| `LOG_LEVEL` | `string` | `info` | Pino log level (`fatal`, `error`, `warn`, `info`, `debug`, `trace`) |
+
+---
+
+## 🛡️ Coturn Deployment
+
+Production Coturn configuration files and docker-compose manifest are located in `deploy/coturn/`:
+```bash
+cd deploy/coturn
+# Set TURN_SHARED_SECRET in docker-compose.yml or .env
+docker compose up -d
+```
+See [deploy/coturn/README.md](deploy/coturn/README.md) for full TLS setup and firewall instructions.
+
+---
+
+## 📊 Observability & Metrics
+
+- **Liveness Probe**: `GET /health` → `{ status: 'ok', uptime, timestamp }`
+- **Readiness Probe**: `GET /ready` → `{ status: 'ready', activeRooms, uptime }`
+- **Prometheus Metrics**: `GET /metrics` → Standard Node.js runtime metrics + domain metrics:
+  - `static_active_rooms`: Active room count
+  - `static_participants_total{state}`: Participants by state (`PARTY`, `LOUNGE`, `QUEUED`, `DISCONNECTED`)
+  - `static_queue_length_total`: Total waiting participants
+  - `static_signaling_messages_total{type}`: Signaling messages processed
+  - `static_signaling_rejected_total{reason}`: Rejected WebRTC signals
+  - `static_rate_limit_hits_total{action}`: Rate limit violations
+  - `static_reconnects_total{status}`: Reconnect attempts
+  - `static_grace_period_saves_total`: Reconnects within 8-second host grace window
+  - `static_ice_config_requests_total`: ICE configurations generated
+
+---
+
+## 🧪 Testing, Load & Chaos
+
+- **Vitest Suite**: `npm test` (49 tests)
+- **E2E WebRTC Tests**: `npx playwright test` (see `e2e/webrtc.spec.ts`)
+- **k6 Signaling Load Test**: `k6 run load-test/signaling-k6.js`
+- **Artillery Signaling Load Test**: `npx artillery run load-test/artillery-signaling.yml`
+- **Network Chaos Emulation**: `sudo ./scripts/network-chaos.sh apply 10% 30ms 350kbit`
 
 ---
 

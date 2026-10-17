@@ -37,7 +37,7 @@ interface PartyGridProps {
   disconnectedPeerIds?: Set<string>;
 }
 
-export const PartyGrid: React.FC<PartyGridProps> = ({
+export const PartyGrid: React.FC<PartyGridProps> = React.memo(({
   roomName,
   participants,
   currentUserId,
@@ -470,4 +470,4 @@ export const PartyGrid: React.FC<PartyGridProps> = ({
       </div>
     </div>
   );
-};
+});

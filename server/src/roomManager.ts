@@ -13,12 +13,57 @@ import {
   validateAndSanitizeRoomName,
   validateAndSanitizeRoomCode
 } from './validators.js';
+import { RoomStore, InMemoryRoomStore } from './roomStore.js';
 
 export const PARTY_CAPACITY = 8;
 export const LOUNGE_CAPACITY = 50;
+export const MAX_QUEUE_CAPACITY = 200;
 const ROOM_ID_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 export const HOST_GRACE_PERIOD_MS = 8000;
+
+export class RoomMutex {
+  private queue: Array<() => void> = [];
+  private locked: boolean = false;
+
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
+    await new Promise<void>((resolve) => {
+      if (!this.locked) {
+        this.locked = true;
+        resolve();
+      } else {
+        this.queue.push(resolve);
+      }
+    });
+    try {
+      return await fn();
+    } finally {
+      if (this.queue.length > 0) {
+        const next = this.queue.shift()!;
+        next();
+      } else {
+        this.locked = false;
+      }
+    }
+  }
+}
+
+export function hashSessionToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function verifySessionTokenHash(candidateToken: string, storedHash: string): boolean {
+  if (!candidateToken || !storedHash) return false;
+  const candidateHash = hashSessionToken(candidateToken);
+  try {
+    const a = Buffer.from(candidateHash, 'hex');
+    const b = Buffer.from(storedHash, 'hex');
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch (_) {
+    return false;
+  }
+}
 
 export interface InternalRoom {
   roomId: string;
@@ -29,7 +74,7 @@ export interface InternalRoom {
   lastActivity: number;
   participants: Map<string, Participant>;
   socketToParticipant: Map<string, string>;
-  tokenToParticipant: Map<string, string>;
+  tokenToParticipant: Map<string, string>; // Maps SHA-256 hash -> participantId
   queue: string[];
   chatHistory: ChatMessage[];
   partyOrder?: string[];
@@ -37,11 +82,23 @@ export interface InternalRoom {
   hostGraceTimer?: NodeJS.Timeout;
   disconnectedHostId?: string;
   hostDisconnectGraceSeconds?: number;
-  isRecording?: boolean;
+  mutex: RoomMutex;
 }
 
 export class RoomManager {
-  private rooms: Map<string, InternalRoom> = new Map();
+  private rooms: RoomStore;
+  private zombieReaperTimer: NodeJS.Timeout;
+
+  constructor(store?: RoomStore) {
+    this.rooms = store || new InMemoryRoomStore();
+    this.zombieReaperTimer = setInterval(() => {
+      this.pruneZombieParticipants();
+    }, 60000);
+  }
+
+  public getRoomCount(): number {
+    return this.rooms.count();
+  }
 
   public generateRoomId(): string {
     let id = '';
@@ -63,9 +120,6 @@ export class RoomManager {
     return 'p_' + crypto.randomBytes(8).toString('hex');
   }
 
-  /**
-   * Ensures username uniqueness in room by appending #2, #3 if necessary
-   */
   private resolveUniqueDisplayName(room: InternalRoom, baseName: string): string {
     const existingNames = new Set(
       Array.from(room.participants.values()).map((p) => p.displayName.toLowerCase())
@@ -103,14 +157,15 @@ export class RoomManager {
 
     const roomId = this.generateRoomId();
     const participantId = this.generateParticipantId();
-    const sessionToken = existingToken || this.generateSessionToken();
+    const rawSessionToken = existingToken || this.generateSessionToken();
+    const tokenHash = hashSessionToken(rawSessionToken);
     const now = Date.now();
     const cleanRoomName = roomNameValidation.normalized;
 
     const hostParticipant: Participant = {
       participantId,
       socketId,
-      sessionToken,
+      sessionToken: rawSessionToken,
       displayName: validation.normalized,
       role: 'HOST',
       state: 'PARTY',
@@ -129,11 +184,11 @@ export class RoomManager {
       lastActivity: now,
       participants: new Map([[participantId, hostParticipant]]),
       socketToParticipant: new Map([[socketId, participantId]]),
-      tokenToParticipant: new Map([[sessionToken, participantId]]),
+      tokenToParticipant: new Map([[tokenHash, participantId]]),
       queue: [],
       chatHistory: [],
-      isRecording: false,
-      partyOrder: [participantId]
+      partyOrder: [participantId],
+      mutex: new RoomMutex()
     };
 
     this.rooms.set(roomId, room);
@@ -142,6 +197,25 @@ export class RoomManager {
 
   public getRoom(roomId: string): InternalRoom | undefined {
     return this.rooms.get(roomId.toUpperCase());
+  }
+
+  public getAllRooms(): IterableIterator<InternalRoom> {
+    return this.rooms.values();
+  }
+
+  private findParticipantByToken(
+    room: InternalRoom,
+    rawToken: string
+  ): { participant?: Participant; tokenHash?: string } {
+    if (!rawToken) return {};
+
+    for (const [storedHash, pId] of room.tokenToParticipant.entries()) {
+      if (verifySessionTokenHash(rawToken, storedHash) || storedHash === rawToken) {
+        const participant = room.participants.get(pId);
+        return { participant, tokenHash: storedHash };
+      }
+    }
+    return {};
   }
 
   public joinRoom(
@@ -156,6 +230,7 @@ export class RoomManager {
     error?: string;
     errorCode?: 'NOT_FOUND' | 'INVITATIONS_CLOSED' | 'ROOM_FULL' | 'EXPIRED' | 'BLOCKED' | 'INVALID_INPUT';
     hostReconnected?: boolean;
+    supersededSocketId?: string;
   } {
     const codeValidation = validateAndSanitizeRoomCode(rawRoomId);
     if (!codeValidation.isValid) {
@@ -170,17 +245,35 @@ export class RoomManager {
 
     this.touchRoom(room);
 
-    // Reconnecting with existing session token
-    if (existingToken && room.tokenToParticipant.has(existingToken)) {
-      const pId = room.tokenToParticipant.get(existingToken)!;
-      const existingParticipant = room.participants.get(pId);
+    // 1. Reconnecting with existing session token (with SHA-256 validation & token rotation)
+    if (existingToken) {
+      const { participant: existingParticipant, tokenHash: matchedHash } = this.findParticipantByToken(
+        room,
+        existingToken
+      );
+
       if (existingParticipant && existingParticipant.state !== 'REMOVED') {
+        const supersededSocketId =
+          existingParticipant.socketId && existingParticipant.socketId !== socketId
+            ? existingParticipant.socketId
+            : undefined;
+
+        // Token rotation: generate fresh token, store new hash, delete old hash
+        const newRawToken = this.generateSessionToken();
+        const newHash = hashSessionToken(newRawToken);
+
+        if (matchedHash) {
+          room.tokenToParticipant.delete(matchedHash);
+        }
+        room.tokenToParticipant.set(newHash, existingParticipant.participantId);
+        existingParticipant.sessionToken = newRawToken;
+
         room.socketToParticipant.delete(existingParticipant.socketId);
         existingParticipant.socketId = socketId;
-        room.socketToParticipant.set(socketId, pId);
+        room.socketToParticipant.set(socketId, existingParticipant.participantId);
 
         let hostReconnected = false;
-        if (room.disconnectedHostId === pId) {
+        if (room.disconnectedHostId === existingParticipant.participantId) {
           if (room.hostGraceTimer) {
             clearTimeout(room.hostGraceTimer);
             room.hostGraceTimer = undefined;
@@ -190,11 +283,17 @@ export class RoomManager {
           hostReconnected = true;
         }
 
-        return { success: true, participant: existingParticipant, room, hostReconnected };
+        return {
+          success: true,
+          participant: existingParticipant,
+          room,
+          hostReconnected,
+          supersededSocketId
+        };
       }
     }
 
-    // Check if invitations are stopped
+    // 2. Check if invitations are stopped
     if (!room.invitationsOpen) {
       return {
         success: false,
@@ -211,35 +310,45 @@ export class RoomManager {
     const uniqueName = this.resolveUniqueDisplayName(room, nameValidation.normalized);
     const loungeParticipants = this.getLoungeParticipants(room);
     const participantId = this.generateParticipantId();
-    const sessionToken = existingToken || this.generateSessionToken();
+    const rawSessionToken = this.generateSessionToken();
+    const tokenHash = hashSessionToken(rawSessionToken);
 
     let state: ParticipantState = 'LOUNGE';
     let queuePosition: number | undefined;
 
     if (loungeParticipants.length >= LOUNGE_CAPACITY) {
+      if (room.queue.length >= MAX_QUEUE_CAPACITY) {
+        return {
+          success: false,
+          error: 'The room waiting queue is currently full. Please try again later.',
+          errorCode: 'ROOM_FULL'
+        };
+      }
       state = 'QUEUED';
       room.queue.push(participantId);
       queuePosition = room.queue.length;
     }
 
-    const newParticipant: Participant = {
+    const participant: Participant = {
       participantId,
       socketId,
-      sessionToken,
+      sessionToken: rawSessionToken,
       displayName: uniqueName,
       role: 'GUEST',
       state,
-      microphoneState: 'OFF',
+      microphoneState: 'MUTED',
       isSpeaking: false,
       joinedAt: Date.now(),
-      queuePosition
+      queuePosition,
+      isHandRaised: false,
+      isHostMuted: false
     };
 
-    room.participants.set(participantId, newParticipant);
+    room.participants.set(participantId, participant);
     room.socketToParticipant.set(socketId, participantId);
-    room.tokenToParticipant.set(sessionToken, participantId);
+    room.tokenToParticipant.set(tokenHash, participantId);
 
-    return { success: true, participant: newParticipant, room };
+    return { success: true, participant, room };
   }
 
   public admitToParty(
@@ -248,6 +357,7 @@ export class RoomManager {
     targetParticipantId: string
   ): {
     success: boolean;
+    admittedParticipant?: Participant;
     promotedParticipant?: Participant;
     queuePromotedParticipant?: Participant;
     error?: string;
@@ -259,7 +369,7 @@ export class RoomManager {
 
     const party = this.getPartyParticipants(room);
     if (party.length >= PARTY_CAPACITY) {
-      return { success: false, error: 'The party is packed! 🎉' };
+      return { success: false, error: 'Party is already full (max 8 speakers).' };
     }
 
     const target = room.participants.get(targetParticipantId);
@@ -268,34 +378,30 @@ export class RoomManager {
     }
 
     if (target.state !== 'LOUNGE') {
-      return { success: false, error: 'Participant is not in the Lounge.' };
+      return { success: false, error: 'Only participants in the Lounge can be admitted to the Party.' };
     }
 
     target.state = 'PARTY';
     target.partyJoinedAt = Date.now();
-    target.microphoneState = 'MUTED';
+    target.isHandRaised = false;
 
     if (!room.partyOrder) {
-      room.partyOrder = [];
+      room.partyOrder = this.getPartyParticipants(room).map((p) => p.participantId);
+    } else if (!room.partyOrder.includes(target.participantId)) {
+      room.partyOrder.push(target.participantId);
     }
-    if (!room.partyOrder.includes(targetParticipantId)) {
-      room.partyOrder.push(targetParticipantId);
-    }
-
-    this.touchRoom(room);
 
     const queuePromoted = this.promoteNextQueuedUser(room);
+    this.touchRoom(room);
 
     return {
       success: true,
+      admittedParticipant: target,
       promotedParticipant: target,
       queuePromotedParticipant: queuePromoted
     };
   }
 
-  /**
-   * Host master control: Clear the entire Lounge at once without touching Party members
-   */
   public clearLounge(
     room: InternalRoom,
     hostSocketId: string
@@ -305,9 +411,12 @@ export class RoomManager {
       return { success: false, clearedParticipants: [], error: 'Only the host can clear the lounge.' };
     }
 
-    const loungeMembers = this.getLoungeParticipants(room);
-    const queuedMembers = Array.from(room.participants.values()).filter((p) => p.state === 'QUEUED');
-    const cleared = [...loungeMembers, ...queuedMembers];
+    const cleared: Participant[] = [];
+    for (const p of room.participants.values()) {
+      if (p.state === 'LOUNGE' || p.state === 'QUEUED') {
+        cleared.push(p);
+      }
+    }
 
     for (const p of cleared) {
       this.removeParticipantInternal(room, p.participantId);
@@ -335,9 +444,9 @@ export class RoomManager {
       return { success: false, error: 'Participant is not in the party.' };
     }
 
+    target.isHostMuted = true;
     target.microphoneState = 'MUTED';
     target.isSpeaking = false;
-    target.isHostMuted = true;
     this.touchRoom(room);
 
     return { success: true, mutedParticipant: target };
@@ -401,7 +510,6 @@ export class RoomManager {
     currentHost.role = 'GUEST';
     target.role = 'HOST';
     room.hostId = target.participantId;
-    room.isRecording = false;
     this.touchRoom(room);
 
     return { success: true, oldHost: currentHost, newHost: target };
@@ -451,7 +559,7 @@ export class RoomManager {
     return {
       success: true,
       kickedParticipant: target,
-      wasInLounge: wasInLounge || wasInQueue,
+      wasInLounge,
       queuePromotedParticipant: queuePromoted
     };
   }
@@ -596,7 +704,9 @@ export class RoomManager {
     return undefined;
   }
 
-  public getRoomAndParticipantBySocketId(socketId: string): { room: InternalRoom; participant: Participant } | undefined {
+  public getRoomAndParticipantBySocketId(
+    socketId: string
+  ): { room: InternalRoom; participant: Participant } | undefined {
     for (const room of this.rooms.values()) {
       const pId = room.socketToParticipant.get(socketId);
       if (pId) {
@@ -633,7 +743,7 @@ export class RoomManager {
 
         if (otherParty.length > 0 || lounge.length > 0) {
           room.disconnectedHostId = pId;
-          room.hostDisconnectGraceSeconds = 15;
+          room.hostDisconnectGraceSeconds = 8; // 8 seconds host grace period
 
           if (room.hostGraceTimer) {
             clearTimeout(room.hostGraceTimer);
@@ -648,19 +758,17 @@ export class RoomManager {
             const newHost = this.migrateHostImmediately(room);
             this.touchRoom(room);
             onGracePeriodExpire(room, newHost);
-          }, 15000);
+          }, HOST_GRACE_PERIOD_MS);
 
           return {
             room,
             participant,
             isHostGracePeriod: true,
-            graceSeconds: 15
+            graceSeconds: 8
           };
         } else {
-          // Host is currently the sole occupant in the room:
-          // DO NOT delete the host or destroy the room!
-          // Keep participant and tokenToParticipant intact so host can reconnect or friends can join.
-          room.disconnectedHostId = pId;
+          // Sole occupant host: keep room intact with touch timer
+          participant.state = 'DISCONNECTED';
           this.touchRoom(room);
           return {
             room,
@@ -670,22 +778,9 @@ export class RoomManager {
         }
       }
 
-      // If active party member disconnects unexpectedly, allow a 15-second reconnection window
-      if (participant.state === 'PARTY') {
-        return {
-          room,
-          participant,
-          isHostGracePeriod: false
-        };
-      }
-
-      const result = this.leaveRoom(room, socketId);
-      return {
-        room,
-        participant: result.leavingParticipant,
-        newHost: result.newHost,
-        queuePromotedParticipant: result.queuePromotedParticipant
-      };
+      participant.state = 'DISCONNECTED';
+      this.touchRoom(room);
+      return { room, participant };
     }
 
     return {};
@@ -701,10 +796,15 @@ export class RoomManager {
     }
 
     const all = Array.from(room.participants.values());
-    if (room.inactivityTimer) clearTimeout(room.inactivityTimer);
-    if (room.hostGraceTimer) clearTimeout(room.hostGraceTimer);
+    if (room.inactivityTimer) {
+      clearTimeout(room.inactivityTimer);
+      room.inactivityTimer = undefined;
+    }
+    if (room.hostGraceTimer) {
+      clearTimeout(room.hostGraceTimer);
+      room.hostGraceTimer = undefined;
+    }
 
-    // Thorough memory wipe: room ceases to exist immediately
     room.participants.clear();
     room.socketToParticipant.clear();
     room.tokenToParticipant.clear();
@@ -730,30 +830,25 @@ export class RoomManager {
     return { success: true, open: room.invitationsOpen };
   }
 
-  public addChatMessage(room: InternalRoom, message: ChatMessage): void {
-    room.chatHistory.push(message);
-    if (room.chatHistory.length > 50) {
-      room.chatHistory.shift();
-    }
-  }
-
   public updateMicrophoneState(
     room: InternalRoom,
     socketId: string,
-    micState: MicrophoneState
+    state: MicrophoneState
   ): Participant | undefined {
     const participant = this.getParticipantBySocket(room, socketId);
     if (participant) {
-      if (participant.isHostMuted && micState === 'ON') {
-        return participant; // Block unmuting when locked by host
+      if (participant.isHostMuted && state === 'ON') {
+        participant.microphoneState = 'MUTED';
+        participant.isSpeaking = false;
+        return participant;
       }
-      participant.microphoneState = micState;
-      if (micState === 'MUTED' || micState === 'OFF' || micState === 'DENIED') {
+      participant.microphoneState = state;
+      if (state === 'MUTED' || state === 'OFF' || state === 'DENIED') {
         participant.isSpeaking = false;
       }
-      return participant;
+      this.touchRoom(room);
     }
-    return undefined;
+    return participant;
   }
 
   public updateSpeaking(
@@ -762,44 +857,112 @@ export class RoomManager {
     isSpeaking: boolean
   ): Participant | undefined {
     const participant = this.getParticipantBySocket(room, socketId);
-    if (participant && participant.state === 'PARTY') {
-      if (participant.microphoneState === 'MUTED' || participant.microphoneState === 'OFF') {
-        participant.isSpeaking = false;
-      } else {
-        participant.isSpeaking = isSpeaking;
-      }
-      return participant;
+    if (participant) {
+      participant.isSpeaking = isSpeaking;
     }
-    return undefined;
+    return participant;
+  }
+
+  public reorderParty(
+    room: InternalRoom,
+    hostSocketId: string,
+    orderedIds: string[]
+  ): { success: boolean; error?: string } {
+    const host = this.getParticipantBySocket(room, hostSocketId);
+    if (!host || host.role !== 'HOST') {
+      return { success: false, error: 'Only the host can reorder party members.' };
+    }
+
+    const currentParty = this.getPartyParticipants(room);
+    const currentIds = new Set(currentParty.map((p) => p.participantId));
+
+    if (orderedIds.length !== currentParty.length) {
+      return { success: false, error: 'Reordered list must contain all party members.' };
+    }
+
+    for (const id of orderedIds) {
+      if (!currentIds.has(id)) {
+        return { success: false, error: 'Invalid participant ID in reorder list.' };
+      }
+    }
+
+    room.partyOrder = [...orderedIds];
+    this.touchRoom(room);
+    return { success: true };
+  }
+
+  public addChatMessage(
+    room: InternalRoom,
+    msgOrSenderId: ChatMessage | string,
+    senderName?: string,
+    text?: string,
+    isHost?: boolean
+  ): ChatMessage {
+    let message: ChatMessage;
+    if (typeof msgOrSenderId === 'object') {
+      message = msgOrSenderId;
+    } else {
+      message = {
+        id: crypto.randomUUID(),
+        roomId: room.roomId,
+        senderParticipantId: msgOrSenderId,
+        senderName: senderName || 'Anonymous',
+        text: text || '',
+        timestamp: Date.now(),
+        isHost: !!isHost
+      };
+    }
+
+    room.chatHistory.push(message);
+    if (room.chatHistory.length > 100) {
+      room.chatHistory.shift();
+    }
+
+    this.touchRoom(room);
+    return message;
   }
 
   private promoteNextQueuedUser(room: InternalRoom): Participant | undefined {
     if (room.queue.length === 0) return undefined;
-    const nextId = room.queue.shift()!;
-    const nextParticipant = room.participants.get(nextId);
-    if (nextParticipant && nextParticipant.state === 'QUEUED') {
-      nextParticipant.state = 'LOUNGE';
-      nextParticipant.queuePosition = undefined;
+
+    const loungeParticipants = this.getLoungeParticipants(room);
+    if (loungeParticipants.length >= LOUNGE_CAPACITY) return undefined;
+
+    const nextId = room.queue.shift();
+    if (!nextId) return undefined;
+
+    const participant = room.participants.get(nextId);
+    if (participant && participant.state === 'QUEUED') {
+      participant.state = 'LOUNGE';
+      participant.queuePosition = undefined;
       this.recalculateQueuePositions(room);
-      return nextParticipant;
+      return participant;
     }
+
     return undefined;
   }
 
   private recalculateQueuePositions(room: InternalRoom): void {
-    room.queue.forEach((pId, idx) => {
-      const p = room.participants.get(pId);
-      if (p) {
-        p.queuePosition = idx + 1;
+    const validQueue: string[] = [];
+    room.queue.forEach((id) => {
+      const p = room.participants.get(id);
+      if (p && p.state === 'QUEUED') {
+        validQueue.push(id);
+        p.queuePosition = validQueue.length;
       }
     });
+    room.queue = validQueue;
   }
 
   private removeParticipantInternal(room: InternalRoom, participantId: string): void {
     const p = room.participants.get(participantId);
     if (p) {
       room.socketToParticipant.delete(p.socketId);
-      room.tokenToParticipant.delete(p.sessionToken);
+      for (const [hash, id] of room.tokenToParticipant.entries()) {
+        if (id === participantId) {
+          room.tokenToParticipant.delete(hash);
+        }
+      }
       room.participants.delete(participantId);
     }
     room.queue = room.queue.filter((id) => id !== participantId);
@@ -812,56 +975,28 @@ export class RoomManager {
     room.lastActivity = Date.now();
     if (room.inactivityTimer) {
       clearTimeout(room.inactivityTimer);
-      room.inactivityTimer = undefined;
     }
 
-    if (room.participants.size === 0) {
-      room.inactivityTimer = setTimeout(() => {
-        if (room.participants.size === 0) {
-          this.rooms.delete(room.roomId);
-        }
-      }, INACTIVITY_TIMEOUT_MS);
-    }
+    room.inactivityTimer = setTimeout(() => {
+      if (this.rooms.has(room.roomId)) {
+        if (room.inactivityTimer) clearTimeout(room.inactivityTimer);
+        if (room.hostGraceTimer) clearTimeout(room.hostGraceTimer);
+        this.rooms.delete(room.roomId);
+      }
+    }, INACTIVITY_TIMEOUT_MS);
   }
 
   public getPartyParticipants(room: InternalRoom): Participant[] {
-    const party = Array.from(room.participants.values()).filter((p) => p.state === 'PARTY');
-    if (room.partyOrder && room.partyOrder.length > 0) {
-      const orderMap = new Map(room.partyOrder.map((id, index) => [id, index]));
-      return party.sort((a, b) => {
-        const orderA = orderMap.has(a.participantId) ? orderMap.get(a.participantId)! : 999;
-        const orderB = orderMap.has(b.participantId) ? orderMap.get(b.participantId)! : 999;
-        return orderA - orderB;
-      });
+    const list = Array.from(room.participants.values()).filter((p) => p.state === 'PARTY');
+    if (!room.partyOrder || room.partyOrder.length === 0) {
+      return list;
     }
-    return party;
-  }
-
-  public reorderParty(
-    room: InternalRoom,
-    hostSocketId: string,
-    orderedParticipantIds: string[]
-  ): { success: boolean; error?: string } {
-    const host = this.getParticipantBySocket(room, hostSocketId);
-    if (!host || host.role !== 'HOST') {
-      return { success: false, error: 'Only the host can rearrange party participants.' };
-    }
-
-    const currentPartyIds = new Set(
-      Array.from(room.participants.values())
-        .filter((p) => p.state === 'PARTY')
-        .map((p) => p.participantId)
-    );
-    const newOrder = orderedParticipantIds.filter((id) => currentPartyIds.has(id));
-    currentPartyIds.forEach((id) => {
-      if (!newOrder.includes(id)) {
-        newOrder.push(id);
-      }
+    const orderMap = new Map(room.partyOrder.map((id, index) => [id, index]));
+    return list.sort((a, b) => {
+      const orderA = orderMap.get(a.participantId) ?? 999;
+      const orderB = orderMap.get(b.participantId) ?? 999;
+      return orderA - orderB;
     });
-
-    room.partyOrder = newOrder;
-    this.touchRoom(room);
-    return { success: true };
   }
 
   public getLoungeParticipants(room: InternalRoom): Participant[] {
@@ -876,6 +1011,7 @@ export class RoomManager {
   public getRoomSummary(room: InternalRoom): RoomSummary {
     const party = this.getPartyParticipants(room);
     const lounge = this.getLoungeParticipants(room);
+
     return {
       roomId: room.roomId,
       roomName: room.roomName,
@@ -887,26 +1023,46 @@ export class RoomManager {
       loungeCount: lounge.length,
       loungeCapacity: LOUNGE_CAPACITY,
       queueCount: room.queue.length,
-      hostDisconnectGraceSeconds: room.hostDisconnectGraceSeconds,
-      isRecording: !!room.isRecording
+      hostDisconnectGraceSeconds: room.hostDisconnectGraceSeconds
     };
   }
 
-  public setRecordingState(room: InternalRoom, isRecording: boolean): void {
-    room.isRecording = isRecording;
-    this.touchRoom(room);
-  }
-
-  public getClientRoomState(room: InternalRoom, currentUser: Participant): ClientRoomState {
-    const party = this.getPartyParticipants(room);
-    const lounge = this.getLoungeParticipants(room);
+  public getClientRoomState(room: InternalRoom, currentParticipant: Participant): ClientRoomState {
     return {
       room: this.getRoomSummary(room),
-      currentUser,
-      party,
-      lounge,
+      currentUser: currentParticipant,
+      party: this.getPartyParticipants(room),
+      lounge: this.getLoungeParticipants(room),
       chatHistory: room.chatHistory,
-      queuePosition: currentUser.queuePosition
+      queuePosition: currentParticipant.queuePosition
     };
+  }
+
+  /**
+   * Periodic reaper for zombie participants in DISCONNECTED state for > 60s
+   */
+  public pruneZombieParticipants(): void {
+    const now = Date.now();
+    for (const room of this.rooms.values()) {
+      for (const [pId, p] of room.participants.entries()) {
+        if (p.state === 'DISCONNECTED') {
+          if (room.disconnectedHostId === pId && room.hostGraceTimer) {
+            continue;
+          }
+          if (now - p.joinedAt > 60000) {
+            this.removeParticipantInternal(room, pId);
+          }
+        }
+      }
+    }
+  }
+
+  public destroy(): void {
+    clearInterval(this.zombieReaperTimer);
+    for (const room of this.rooms.values()) {
+      if (room.inactivityTimer) clearTimeout(room.inactivityTimer);
+      if (room.hostGraceTimer) clearTimeout(room.hostGraceTimer);
+    }
+    this.rooms.clear();
   }
 }

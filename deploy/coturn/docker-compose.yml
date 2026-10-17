@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  coturn:
+    image: coturn/coturn:latest
+    container_name: static-coturn
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt/live/turn.example.com:/etc/ssl/turn:ro
+      - ./logs:/var/log/coturn
+    command: ["-c", "/etc/coturn/turnserver.conf"]

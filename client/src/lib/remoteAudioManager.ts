@@ -21,10 +21,34 @@ export class RemoteAudioManager {
   private isAutoplayBlocked: boolean = false;
   private callbacks: RemoteAudioCallbacks;
   private container: HTMLElement | null = null;
+  private visibilityHandler: (() => void) | null = null;
+  private deviceChangeHandler: (() => void) | null = null;
 
   constructor(callbacks: RemoteAudioCallbacks = {}) {
     this.callbacks = callbacks;
     this.ensureContainer();
+    this.setupLifecycleListeners();
+  }
+
+  private setupLifecycleListeners() {
+    if (typeof document !== 'undefined') {
+      this.visibilityHandler = () => {
+        if (document.visibilityState === 'visible') {
+          this.unlockAll();
+        }
+      };
+      document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+      this.deviceChangeHandler = () => {
+        // Handle Bluetooth routing / headphone unplugging
+        setTimeout(() => {
+          this.unlockAll();
+        }, 300);
+      };
+      navigator.mediaDevices.addEventListener('devicechange', this.deviceChangeHandler);
+    }
   }
 
   /**
@@ -251,7 +275,7 @@ export class RemoteAudioManager {
   }
 
   /**
-   * Retrieves all active remote MediaStreams for mixing (e.g. session recording)
+   * Retrieves all active remote MediaStreams
    */
   public getActiveRemoteStreams(): MediaStream[] {
     const streams: MediaStream[] = [];
@@ -267,6 +291,15 @@ export class RemoteAudioManager {
    * Full teardown of all audio elements and container
    */
   public cleanup() {
+    if (this.visibilityHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
+    if (this.deviceChangeHandler && typeof navigator !== 'undefined' && navigator.mediaDevices) {
+      navigator.mediaDevices.removeEventListener('devicechange', this.deviceChangeHandler);
+      this.deviceChangeHandler = null;
+    }
+
     for (const [, audio] of this.audioElements.entries()) {
       audio.pause();
       audio.srcObject = null;

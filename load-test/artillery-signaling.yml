@@ -1,0 +1,29 @@
+config:
+  target: "ws://localhost:3001/socket.io/?EIO=4&transport=websocket"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Warm-up phase"
+    - duration: 60
+      arrivalRate: 20
+      rampTo: 50
+      name: "Ramp up signaling load"
+    - duration: 60
+      arrivalRate: 50
+      name: "Sustained high load"
+  plugins:
+    metrics-by-endpoint: {}
+
+scenarios:
+  - name: "WebRTC Full-Mesh Peer Signaling Session"
+    engine: ws
+    flow:
+      - send: "40"
+      - think: 1
+      - send: '42["join-room",{"roomId":"PERF01","displayName":"StressUser"}]'
+      - think: 1
+      - loop:
+          - send: '42["signal-peer",{"roomId":"PERF01","targetSocketId":"peer_target","type":"ice-candidate","signal":{"candidate":"candidate:1 1 UDP 2130706431 192.168.1.1 50000 typ host","sdpMid":"0","sdpMLineIndex":0}}]'
+          - think: 0.2
+        count: 10
+      - think: 2

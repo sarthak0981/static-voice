@@ -32,7 +32,6 @@ export interface RoomSummary {
   loungeCapacity: number; // 50
   queueCount: number;
   hostDisconnectGraceSeconds?: number;
-  isRecording?: boolean;
 }
 
 export interface ChatMessage {
@@ -67,7 +66,7 @@ export interface SignalData {
 export interface ClientToServerEvents {
   'create-room': (
     payload: { roomName?: string; displayName: string; sessionToken?: string },
-    callback: (response: { success: boolean; roomId?: string; sessionToken?: string; state?: ClientRoomState; error?: string }) => void
+    callback: (response: { success: boolean; roomId?: string; sessionToken?: string; state?: ClientRoomState; error?: string; errorCode?: string }) => void
   ) => void;
 
   'join-room': (
@@ -77,13 +76,13 @@ export interface ClientToServerEvents {
       state?: ClientRoomState;
       sessionToken?: string;
       error?: string;
-      errorCode?: 'NOT_FOUND' | 'INVITATIONS_CLOSED' | 'ROOM_FULL' | 'EXPIRED' | 'BLOCKED' | 'INVALID_INPUT';
+      errorCode?: 'NOT_FOUND' | 'INVITATIONS_CLOSED' | 'ROOM_FULL' | 'EXPIRED' | 'BLOCKED' | 'INVALID_INPUT' | 'IP_LOCKED_OUT' | 'RATE_LIMITED' | string;
     }) => void
   ) => void;
 
   'reconnect-session': (
     payload: { roomId: string; sessionToken: string },
-    callback: (response: { success: boolean; state?: ClientRoomState; error?: string }) => void
+    callback: (response: { success: boolean; state?: ClientRoomState; error?: string; errorCode?: string }) => void
   ) => void;
 
   'admit-to-party': (
@@ -166,16 +165,6 @@ export interface ClientToServerEvents {
   'get-ice-config': (
     callback: (response: { iceServers: Array<{ urls: string | string[]; username?: string; credential?: string }> }) => void
   ) => void;
-
-  'start-recording': (
-    payload: { roomId?: string },
-    callback: (response: { success: boolean; error?: string }) => void
-  ) => void;
-
-  'stop-recording': (
-    payload: { roomId?: string },
-    callback: (response: { success: boolean; error?: string }) => void
-  ) => void;
 }
 
 // Server to Client events
@@ -201,5 +190,6 @@ export interface ServerToClientEvents {
   'signal-received': (payload: SignalData) => void;
   'peer-ready-for-offer': (payload: { socketId: string; participantId: string }) => void;
   'party-chat-message': (message: ChatMessage) => void;
-  'recording-status-changed': (payload: { isRecording: boolean; hostName?: string }) => void;
+  'session-replaced': (payload: { reason: string }) => void;
+  'server-restarting': (payload: { message: string; reconnectAfterMs: number }) => void;
 }

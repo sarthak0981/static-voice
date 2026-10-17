@@ -73,28 +73,53 @@ const LEET_MAP: Record<string, string> = {
   '\\/\\/': 'w'
 };
 
+// Homoglyphs map (Cyrillic & Greek lookalikes to Latin letters)
+const HOMOGLYPH_MAP: Record<string, string> = {
+  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'е': 'e', 'ё': 'e', 'ж': 'zh',
+  'з': 'z', 'и': 'i', 'і': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+  'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 'c', 'т': 't', 'у': 'u',
+  'ф': 'f', 'х': 'x', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+  'ы': 'y', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+  'α': 'a', 'β': 'b', 'γ': 'g', 'δ': 'd', 'ε': 'e', 'ζ': 'z', 'η': 'h',
+  'θ': 'th', 'ι': 'i', 'κ': 'k', 'λ': 'l', 'μ': 'm', 'ν': 'n', 'ξ': 'x',
+  'ο': 'o', 'π': 'p', 'ρ': 'r', 'σ': 's', 'ς': 's', 'τ': 't', 'υ': 'u',
+  'φ': 'ph', 'χ': 'ch', 'ψ': 'ps', 'ω': 'o'
+};
+
 /**
  * Normalizes raw input:
- * 1. Strips zero-width & non-printable characters.
- * 2. Unifies leetspeak characters.
- * 3. Collapses excessive repeated letters.
+ * 1. NFKC Unicode normalization.
+ * 2. Strips zero-width & non-printable characters.
+ * 3. Maps Cyrillic/Greek homoglyphs to Latin.
+ * 4. Unifies leetspeak tokens.
+ * 5. Collapses excessive repeated letters (e.g. "fuuuuck" -> "fuck").
  */
 export function normalizeForSafetyCheck(text: string): { normalized: string; compact: string } {
   if (!text) return { normalized: '', compact: '' };
 
-  // Remove zero-width / invisible format characters
-  let clean = text
-    .normalize('NFKD')
-    .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, '')
-    .toLowerCase();
+  // 1. Unicode NFKC normalization
+  let clean = text.normalize('NFKC');
 
-  // Replace leetspeak tokens
+  // 2. Strip zero-width, non-printable, and directional overrides
+  clean = clean.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, '').toLowerCase();
+
+  // 3. Replace homoglyphs
+  for (const [homo, latin] of Object.entries(HOMOGLYPH_MAP)) {
+    if (clean.includes(homo)) {
+      clean = clean.split(homo).join(latin);
+    }
+  }
+
+  // 4. Replace leetspeak tokens
   for (const [leet, normal] of Object.entries(LEET_MAP)) {
     clean = clean.split(leet).join(normal);
   }
 
+  // 5. Collapse 3+ repeated characters down to 1
+  const collapsed = clean.replace(/(.)\1{2,}/g, '$1');
+
   // Compress repeated whitespace
-  const normalized = clean.replace(/\s+/g, ' ').trim();
+  const normalized = collapsed.replace(/\s+/g, ' ').trim();
 
   // Create a compact version with internal punctuation/delimiters removed
   const compact = normalized.replace(/[^a-z0-9]/g, '');
