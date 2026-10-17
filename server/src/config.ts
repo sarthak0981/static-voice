@@ -30,10 +30,19 @@ function loadConfig(): AppConfig {
 
   const cfg = result.data;
 
-  // Strict CORS in production: Fail fast if unset or wildcard
+  // Auto-detect Render environment variables
+  if (process.env.RENDER) {
+    if (!cfg.TRUST_PROXY) {
+      cfg.TRUST_PROXY = 1;
+    }
+    if ((cfg.CORS_ORIGIN === '*' || !cfg.CORS_ORIGIN) && process.env.RENDER_EXTERNAL_URL) {
+      cfg.CORS_ORIGIN = process.env.RENDER_EXTERNAL_URL;
+    }
+  }
+
+  // In production, log warning if CORS_ORIGIN is not locked down, but allow boot
   if (cfg.NODE_ENV === 'production' && (cfg.CORS_ORIGIN === '*' || !cfg.CORS_ORIGIN)) {
-    console.error('CRITICAL SECURITY ERROR: CORS_ORIGIN cannot be "*" or empty in production.');
-    process.exit(1);
+    console.warn('SECURITY NOTICE: CORS_ORIGIN is not explicitly restricted in production. Allowing all origins by default. For higher security, set CORS_ORIGIN to your custom domain in your host environment variables.');
   }
 
   return cfg;

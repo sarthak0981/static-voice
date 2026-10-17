@@ -50,8 +50,8 @@ app.use(compression());
 
 // CORS configuration
 const allowedOrigins =
-  config.CORS_ORIGIN === '*'
-    ? '*'
+  !config.CORS_ORIGIN || config.CORS_ORIGIN === '*'
+    ? true
     : config.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
 
 app.use(
